@@ -1,7 +1,11 @@
 import type { NextConfig } from "next";
 
+// Vercel limita el deploymentId a 32 caracteres; el SHA de Git tiene 40.
+const deploymentId =
+  process.env.VERCEL_DEPLOYMENT_ID ?? process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 32);
+
 const nextConfig: NextConfig = {
-  deploymentId: process.env.VERCEL_GIT_COMMIT_SHA ?? process.env.VERCEL_DEPLOYMENT_ID,
+  deploymentId,
   experimental: {
     serverActions: {
       bodySizeLimit: "8mb",
