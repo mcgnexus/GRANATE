@@ -11,7 +11,7 @@ import {
   type Note,
 } from "@/lib/db/schema";
 import { contentHash } from "@/lib/auth/password";
-import { ApiError } from "@/lib/auth/api";
+import { ApiError } from "@/lib/api-error";
 import { countWords, normalizeVaultPath, titleFromPath } from "@/lib/utils";
 import {
   collectTags,

@@ -2,8 +2,11 @@ import type { NextRequest } from "next/server";
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { apiTokens, vaultMembers, vaults } from "@/lib/db/schema";
+import { ApiError } from "@/lib/api-error";
 import { randomToken, sha256 } from "@/lib/auth/password";
 import { findUserByToken, getSessionUser, type SessionUser } from "@/lib/auth/session";
+
+export { ApiError };
 
 export type ApiAuth =
   | { kind: "session"; user: SessionUser }
@@ -96,14 +99,6 @@ export async function requireVault(userId: string, vaultId: string, write = fals
   if (!vault) throw new ApiError("Bóveda no encontrada", 404);
   if (write && vault.role === "viewer") throw new ApiError("Sin permisos de escritura", 403);
   return vault;
-}
-
-export class ApiError extends Error {
-  status: number;
-  constructor(message: string, status = 400) {
-    super(message);
-    this.status = status;
-  }
 }
 
 export function jsonError(error: unknown) {
