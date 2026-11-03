@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AlertCircle,
+  CalendarDays,
   Check,
   FilePlus2,
   History,
@@ -16,12 +17,14 @@ import {
   Save,
   Search,
   Settings,
+  Share2,
   Sparkles,
   Trash2,
   Upload,
   Eye,
 } from "lucide-react";
-import { FileTree, type TreeBase, type TreeCanvas, type TreeNote } from "./file-tree";
+import { FileTree, type TreeBase, type TreeCanvas, type TreeNote, type TreeSmartViews } from "./file-tree";
+import { FolderPicker } from "./folder-picker";
 import { MarkdownEditor, type MarkdownEditorHandle } from "./markdown-editor";
 import { EditorToolbar } from "./editor-toolbar";
 import { MarkdownPreview } from "./markdown-preview";
@@ -33,9 +36,15 @@ import { BaseView } from "./base-view";
 import { SettingsModal } from "./settings-modal";
 import { ImportDialog } from "./import-dialog";
 import { ResultModal } from "./result-modal";
+import { VersionHistory } from "./version-history";
+import { PropertiesEditor } from "./properties-editor";
+import { AttachmentsPanel } from "./attachments-panel";
+import { ShareModal } from "./share-modal";
+import { PreferencesSync } from "@/components/ui/preferences-sync";
 import { Modal } from "@/components/ui/modal";
 import { ACTION_LABELS, type NoteAction } from "@/lib/ai/actions";
 import type { VaultAccess } from "@/lib/auth/api";
+import { renderTemplate, todayPath, vaultTemplateSettings } from "@/lib/templates";
 
 type NoteDetail = {
   id: string;
@@ -45,6 +54,7 @@ type NoteDetail = {
   frontmatter: Record<string, unknown>;
   wordCount: number;
   updatedAt: string;
+  pinnedAt?: string | null;
   backlinks: Array<{ id: string; path: string; title: string }>;
   outgoing: Array<{ targetPath: string | null; targetId: string | null; rawTarget: string }>;
   tags: string[];
@@ -55,6 +65,7 @@ type TreeData = {
   notes: TreeNote[];
   folders: string[];
   tags: Array<{ name: string; count: number }>;
+  views?: TreeSmartViews;
 };
 
 type SaveState = "idle" | "dirty" | "saving" | "saved" | "error";
@@ -70,7 +81,7 @@ export function Workspace({ vault }: { vault: VaultAccess }) {
   const [canvasTarget, setCanvasTarget] = useState<TreeCanvas | null>(null);
   const [baseTarget, setBaseTarget] = useState<TreeBase | null>(null);
   const [saveState, setSaveState] = useState<SaveState>("idle");
-  const [rightTab, setRightTab] = useState<"details" | "ai">("details");
+  const [rightTab, setRightTab] = useState<"details" | "ai" | "files">("details");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchSeed, setSearchSeed] = useState("");
@@ -81,8 +92,26 @@ export function Workspace({ vault }: { vault: VaultAccess }) {
   const [importOpen, setImportOpen] = useState(false);
   const [newNoteOpen, setNewNoteOpen] = useState(false);
   const [newNotePath, setNewNotePath] = useState("Nueva nota.md");
+  const [newNoteTemplate, setNewNoteTemplate] = useState("");
   const [newFolderOpen, setNewFolderOpen] = useState(false);
   const [newFolderPath, setNewFolderPath] = useState("Nueva carpeta");
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [lastSelectedId, setLastSelectedId] = useState<string | null>(null);
+  const [picker, setPicker] = useState<{
+    open: boolean;
+    noteIds: string[];
+    title: string;
+    description?: string;
+    currentPath?: string;
+  }>({ open: false, noteIds: [], title: "Mover a…" });
+  const [renameTarget, setRenameTarget] = useState<
+    | { kind: "note"; note: TreeNote }
+    | { kind: "folder"; path: string }
+    | null
+  >(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [tagTarget, setTagTarget] = useState<{ ids: string[]; value: string } | null>(null);
   const [llmResult, setLlmResult] = useState<{
     title: string;
     result: string;
@@ -91,9 +120,8 @@ export function Workspace({ vault }: { vault: VaultAccess }) {
   } | null>(null);
   const [llmLoading, setLlmLoading] = useState<NoteAction | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [versions, setVersions] = useState<
-    Array<{ id: string; source: string; createdAt: string }>
-  >([]);
+  const [propertiesOpen, setPropertiesOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   const [toast, setToast] = useState("");
 
   const latest = useRef({ content, activeId: active?.id, activeContent: active?.content });
@@ -120,6 +148,7 @@ export function Workspace({ vault }: { vault: VaultAccess }) {
         notes: data.notes ?? [],
         folders: data.folders ?? [],
         tags: data.tags ?? [],
+        views: data.views,
       });
     }
     if (canvasResponse.ok) {
@@ -175,6 +204,9 @@ export function Workspace({ vault }: { vault: VaultAccess }) {
     setMode("edit");
     setSaveState("idle");
     setSidebarOpen(false);
+    void fetch(`/api/v1/vaults/${vault.id}/notes/${note.id}/open`, { method: "POST" })
+      .then(() => loadTree())
+      .catch(() => undefined);
   }
 
   async function openByPath(path: string) {
@@ -260,13 +292,28 @@ export function Workspace({ vault }: { vault: VaultAccess }) {
   async function createNote() {
     const path = newNotePath.trim();
     if (!path) return;
+    const finalPath = path.endsWith(".md") ? path : `${path}.md`;
+    const title = path.split("/").pop()?.replace(/\.md$/, "") ?? "Nota";
+    let noteContent = `# ${title}\n\n`;
+
+    if (newNoteTemplate) {
+      const templateResponse = await fetch(
+        `/api/v1/vaults/${vault.id}/notes?path=${encodeURIComponent(newNoteTemplate)}`,
+      );
+      if (templateResponse.ok) {
+        const templateData = (await templateResponse.json()) as {
+          note?: { content?: string };
+        };
+        if (templateData.note?.content) {
+          noteContent = renderTemplate(templateData.note.content, { title, date: new Date() });
+        }
+      }
+    }
+
     const response = await fetch(`/api/v1/vaults/${vault.id}/notes`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        path: path.endsWith(".md") ? path : `${path}.md`,
-        content: `# ${path.split("/").pop()?.replace(/\.md$/, "")}\n\n`,
-      }),
+      body: JSON.stringify({ path: finalPath, content: noteContent }),
     });
     const data = (await response.json()) as {
       note?: { id: string; path: string };
@@ -278,27 +325,64 @@ export function Workspace({ vault }: { vault: VaultAccess }) {
     }
     setNewNoteOpen(false);
     setNewNotePath("Nueva nota.md");
+    setNewNoteTemplate("");
     await loadTree();
     await openNote({ id: data.note.id, path: data.note.path, title: data.note.path });
   }
 
-  async function renameActive() {
-    if (!active || !canWrite) return;
-    const next = window.prompt("Nueva ruta de la nota", active.path);
-    if (!next || next === active.path) return;
-    const response = await fetch(`/api/v1/vaults/${vault.id}/notes/${active.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ path: next }),
-    });
-    if (!response.ok) {
-      showToast("No se pudo renombrar (¿ruta duplicada?)");
+  async function openDailyNote() {
+    const settings = vaultTemplateSettings(vault.settings ?? {});
+    const target = todayPath(settings.dailyFolder);
+    const existing = await fetch(
+      `/api/v1/vaults/${vault.id}/notes?path=${encodeURIComponent(target)}`,
+    );
+    if (existing.ok) {
+      const data = (await existing.json()) as { note: { id: string; path: string } };
+      await openNote({ id: data.note.id, path: data.note.path, title: data.note.path });
       return;
     }
-    const data = (await response.json()) as { note: NoteDetail };
-    setActive(data.note);
+    if (!canWrite) {
+      showToast("No tienes permisos de escritura");
+      return;
+    }
+
+    let noteContent = `# ${target.split("/").pop()?.replace(/\.md$/, "")}\n\n`;
+    const templateResponse = await fetch(
+      `/api/v1/vaults/${vault.id}/notes?path=${encodeURIComponent(settings.dailyTemplate)}`,
+    );
+    if (templateResponse.ok) {
+      const templateData = (await templateResponse.json()) as {
+        note?: { content?: string };
+      };
+      if (templateData.note?.content) {
+        noteContent = renderTemplate(templateData.note.content, {
+          title: target.split("/").pop()?.replace(/\.md$/, "") ?? "",
+          date: new Date(),
+        });
+      }
+    }
+
+    const response = await fetch(`/api/v1/vaults/${vault.id}/notes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: target, content: noteContent }),
+    });
+    const data = (await response.json().catch(() => ({}))) as {
+      note?: { id: string; path: string };
+      error?: string;
+    };
+    if (!response.ok || !data.note) {
+      showToast(data.error ?? "No se pudo crear la nota diaria");
+      return;
+    }
     await loadTree();
-    showToast("Nota renombrada y enlaces actualizados");
+    await openNote({ id: data.note.id, path: data.note.path, title: data.note.path });
+    showToast("Nota de hoy creada");
+  }
+
+  function renameActive() {
+    if (!active || !canWrite) return;
+    openRenameNote({ id: active.id, path: active.path, title: active.title, pinnedAt: active.pinnedAt });
   }
 
   async function deleteActive() {
@@ -408,7 +492,283 @@ export function Workspace({ vault }: { vault: VaultAccess }) {
     showToast(folderPath ? `Nota movida a ${folderPath}` : "Nota movida a la raíz");
   }
 
-  async function createBase() {    const path = window.prompt("Ruta de la nueva base", "Proyectos.base");
+  function openNewNote(folder?: string) {
+    setNewNotePath(folder ? `${folder}/Nueva nota.md` : "Nueva nota.md");
+    setNewNoteOpen(true);
+  }
+
+  function openNewFolder(parent?: string) {
+    setNewFolderPath(parent ? `${parent}/Nueva carpeta` : "Nueva carpeta");
+    setNewFolderOpen(true);
+  }
+
+  function openMovePicker(noteIds: string[], title = "Mover a…") {
+    const note = noteIds.length === 1 ? tree.notes.find((item) => item.id === noteIds[0]) : null;
+    const currentPath = note ? note.path.split("/").slice(0, -1).join("/") : "";
+    setPicker({
+      open: true,
+      noteIds,
+      title,
+      description:
+        noteIds.length === 1
+          ? note?.path
+          : `${noteIds.length} notas seleccionadas`,
+      currentPath,
+    });
+  }
+
+  async function applyBatch(
+    action: "move" | "tag" | "untag" | "delete" | "pin" | "unpin",
+    ids: string[],
+    extra: { folder?: string; tag?: string } = {},
+  ) {
+    const response = await fetch(`/api/v1/vaults/${vault.id}/notes/batch`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids, action, ...extra }),
+    });
+    const data = (await response.json().catch(() => ({}))) as {
+      updated?: number;
+      failed?: number;
+      error?: string;
+      results?: Array<{ id: string; ok: boolean; error?: string }>;
+    };
+    if (!response.ok) {
+      showToast(data.error ?? "No se pudo completar la acción");
+      return null;
+    }
+    return data;
+  }
+
+  async function chooseFolder(folderPath: string) {
+    const ids = picker.noteIds;
+    if (ids.length === 1) {
+      await moveNote(ids[0], folderPath);
+    } else {
+      if (active && ids.includes(active.id) && content !== active.content) {
+        await saveNow();
+      }
+      const result = await applyBatch("move", ids, { folder: folderPath });
+      if (result) {
+        showToast(
+          result.failed
+            ? `${result.updated} movidas, ${result.failed} con error`
+            : `${result.updated} notas movidas`,
+        );
+      }
+      await loadTree();
+    }
+    setSelectedIds(new Set());
+    setSelectionMode(false);
+    setPicker({ open: false, noteIds: [], title: "Mover a…" });
+  }
+
+  function openRenameNote(note: TreeNote) {
+    setRenameTarget({ kind: "note", note });
+    setRenameValue(note.path);
+  }
+
+  function openRenameFolder(path: string) {
+    setRenameTarget({ kind: "folder", path });
+    setRenameValue(path);
+  }
+
+  async function commitRename() {
+    if (!renameTarget) return;
+    const value = renameValue.trim();
+    if (!value || value === (renameTarget.kind === "note" ? renameTarget.note.path : renameTarget.path)) {
+      setRenameTarget(null);
+      return;
+    }
+
+    if (renameTarget.kind === "note") {
+      const response = await fetch(
+        `/api/v1/vaults/${vault.id}/notes/${renameTarget.note.id}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ path: value }),
+        },
+      );
+      const data = (await response.json().catch(() => ({}))) as {
+        note?: NoteDetail;
+        error?: string;
+      };
+      if (!response.ok) {
+        showToast(data.error ?? "No se pudo renombrar la nota");
+        return;
+      }
+      if (active?.id === renameTarget.note.id && data.note) {
+        setActive(data.note);
+      }
+      showToast("Nota renombrada y enlaces actualizados");
+    } else {
+      const response = await fetch(`/api/v1/vaults/${vault.id}/folders`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: renameTarget.path, newPath: value }),
+      });
+      const data = (await response.json().catch(() => ({}))) as {
+        movedNotes?: number;
+        error?: string;
+      };
+      if (!response.ok) {
+        showToast(data.error ?? "No se pudo renombrar la carpeta");
+        return;
+      }
+      if (
+        active &&
+        (active.path.toLowerCase() === renameTarget.path.toLowerCase() ||
+          active.path.toLowerCase().startsWith(`${renameTarget.path.toLowerCase()}/`))
+      ) {
+        const nextPath = `${value}${active.path.slice(renameTarget.path.length)}`;
+        void openNote({ id: active.id, path: nextPath, title: active.title });
+      }
+      showToast(
+        `Carpeta renombrada (${data.movedNotes ?? 0} notas movidas)`,
+      );
+    }
+
+    setRenameTarget(null);
+    await loadTree();
+  }
+
+  async function removeNote(note: TreeNote) {
+    if (!canWrite) return;
+    if (!window.confirm(`¿Mover «${note.title}» a la papelera?`)) return;
+    await fetch(`/api/v1/vaults/${vault.id}/notes/${note.id}`, { method: "DELETE" });
+    if (active?.id === note.id) {
+      setActive(null);
+      setContent("");
+    }
+    setSelectedIds((previous) => {
+      const next = new Set(previous);
+      next.delete(note.id);
+      return next;
+    });
+    await loadTree();
+    showToast("Nota movida a la papelera");
+  }
+
+  async function removeFolder(path: string) {
+    if (!canWrite) return;
+    if (!window.confirm(`¿Eliminar la carpeta «${path}»? Solo funciona si está vacía.`)) return;
+    const response = await fetch(
+      `/api/v1/vaults/${vault.id}/folders?path=${encodeURIComponent(path)}`,
+      { method: "DELETE" },
+    );
+    const data = (await response.json().catch(() => ({}))) as { error?: string };
+    if (!response.ok) {
+      showToast(data.error ?? "No se pudo eliminar la carpeta");
+      return;
+    }
+    await loadTree();
+    showToast("Carpeta eliminada");
+  }
+
+  async function toggleFavorite(note: TreeNote) {
+    const pinned = !note.pinnedAt;
+    const response = await fetch(
+      `/api/v1/vaults/${vault.id}/notes/${note.id}/favorite`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pinned }),
+      },
+    );
+    if (!response.ok) {
+      showToast("No se pudo actualizar el favorito");
+      return;
+    }
+    if (active?.id === note.id) {
+      setActive({ ...active, pinnedAt: pinned ? new Date().toISOString() : null });
+    }
+    await loadTree();
+    showToast(pinned ? "Añadida a favoritos" : "Quitada de favoritos");
+  }
+
+  function openTag(noteId: string) {
+    setTagTarget({ ids: [noteId], value: "" });
+  }
+
+  async function commitTag() {
+    if (!tagTarget || !tagTarget.value.trim()) return;
+    if (active && tagTarget.ids.includes(active.id) && content !== active.content) {
+      await saveNow();
+    }
+    const result = await applyBatch("tag", tagTarget.ids, { tag: tagTarget.value.trim() });
+    if (result) {
+      showToast(`Etiqueta añadida a ${result.updated} nota(s)`);
+    }
+    const affectedActive = active && tagTarget.ids.includes(active.id);
+    setTagTarget(null);
+    await loadTree();
+    if (affectedActive && active) {
+      await openNote({ id: active.id, path: active.path, title: active.title });
+    }
+  }
+
+  function handleSelect(noteId: string, shift: boolean) {
+    setSelectionMode(true);
+    setSelectedIds((previous) => {
+      const next = new Set(previous);
+      if (shift && lastSelectedId) {
+        const ids = tree.notes.map((note) => note.id);
+        const from = ids.indexOf(lastSelectedId);
+        const to = ids.indexOf(noteId);
+        if (from !== -1 && to !== -1) {
+          for (let index = Math.min(from, to); index <= Math.max(from, to); index++) {
+            next.add(ids[index]);
+          }
+          return next;
+        }
+      }
+      if (next.has(noteId)) next.delete(noteId);
+      else next.add(noteId);
+      return next;
+    });
+    setLastSelectedId(noteId);
+  }
+
+  function toggleSelectionMode() {
+    if (selectionMode) {
+      setSelectionMode(false);
+      setSelectedIds(new Set());
+    } else {
+      setSelectionMode(true);
+    }
+  }
+
+  function selectAll() {
+    setSelectedIds(new Set(tree.notes.map((note) => note.id)));
+  }
+
+  function clearSelection() {
+    setSelectedIds(new Set());
+    setSelectionMode(false);
+  }
+
+  async function batchDelete() {
+    if (!selectedIds.size) return;
+    if (!window.confirm(`¿Mover ${selectedIds.size} notas a la papelera?`)) return;
+    const ids = Array.from(selectedIds);
+    const result = await applyBatch("delete", ids);
+    if (result) showToast(`${result.updated} notas movidas a la papelera`);
+    if (active && ids.includes(active.id)) {
+      setActive(null);
+      setContent("");
+    }
+    clearSelection();
+    await loadTree();
+  }
+
+  async function batchTag() {
+    if (!selectedIds.size) return;
+    setTagTarget({ ids: Array.from(selectedIds), value: "" });
+  }
+
+  async function createBase() {
+    const path = window.prompt("Ruta de la nueva base", "Proyectos.base");
     if (!path) return;
     const finalPath = path.endsWith(".base") ? path : `${path}.base`;
     const raw = `filters: ''
@@ -431,33 +791,47 @@ views:
     setView("base");
   }
 
-  async function openHistory() {
+  function openHistory() {
     if (!active) return;
     setHistoryOpen(true);
-    const response = await fetch(`/api/v1/vaults/${vault.id}/notes/${active.id}/versions`);
-    if (!response.ok) return;
-    const data = (await response.json()) as {
-      versions: Array<{ id: string; source: string; createdAt: string }>;
-    };
-    setVersions(data.versions);
   }
 
-  async function restoreVersion(versionId: string) {
+  async function saveProperties(next: Record<string, unknown>) {
     if (!active) return;
-    await fetch(`/api/v1/vaults/${vault.id}/notes/${active.id}/versions`, {
-      method: "POST",
+    const response = await fetch(`/api/v1/vaults/${vault.id}/notes/${active.id}`, {
+      method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ versionId }),
+      body: JSON.stringify({ frontmatter: next }),
     });
-    setHistoryOpen(false);
+    const data = (await response.json().catch(() => ({}))) as {
+      note?: NoteDetail;
+      error?: string;
+    };
+    if (!response.ok || !data.note) {
+      showToast(data.error ?? "No se pudieron guardar las propiedades");
+      return;
+    }
+    setActive(data.note);
+    setContent(data.note.content);
+    await loadTree();
+    showToast("Propiedades guardadas");
+  }
+
+  async function onVersionRestored() {
+    if (!active) return;
     await openNote({ id: active.id, path: active.path, title: active.title });
     showToast("Versión restaurada");
   }
 
   const activeTags = active?.tags ?? [];
+  const templateSettings = vaultTemplateSettings(vault.settings ?? {});
+  const templateNotes = tree.notes.filter((note) =>
+    note.path.startsWith(`${templateSettings.templatesFolder}/`),
+  );
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden">
+      <PreferencesSync />
       <header className="relative flex h-12 shrink-0 items-center gap-2 border-b border-[var(--border)] bg-[var(--panel)] px-2 sm:px-3">
         <button
           type="button"
@@ -501,6 +875,14 @@ views:
 
         <div className="ml-auto flex shrink-0 items-center gap-1">
           <div className="hidden items-center gap-1 sm:flex">
+            <button
+              type="button"
+              onClick={() => void openDailyNote()}
+              className="btn btn-ghost h-8 gap-1.5 px-2 text-xs"
+              title="Nota de hoy"
+            >
+              <CalendarDays size={15} /> <span className="hidden md:inline">Hoy</span>
+            </button>
             <button
               type="button"
               onClick={() => {
@@ -565,6 +947,16 @@ views:
                 type="button"
                 onClick={() => {
                   setMobileMenuOpen(false);
+                  void openDailyNote();
+                }}
+                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs hover:bg-[var(--panel-2)]"
+              >
+                <CalendarDays size={14} /> Nota de hoy
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMobileMenuOpen(false);
                   setView("note");
                   setGraphOpen(true);
                 }}
@@ -620,28 +1012,41 @@ views:
               canvases={canvases}
               bases={bases}
               activeId={active?.id}
-              onOpen={openNote}
-              onNewNote={() => {
-                setNewNotePath("Nueva nota.md");
-                setNewNoteOpen(true);
+              views={tree.views}
+              selectionMode={selectionMode}
+              selectedIds={selectedIds}
+              actions={{
+                onOpen: (note) => void openNote(note),
+                onNewNote: openNewNote,
+                onNewFolder: openNewFolder,
+                onDropNote: (noteId, folderPath) => void moveNote(noteId, folderPath),
+                onMoveNote: (note) => openMovePicker([note.id]),
+                onRenameNote: openRenameNote,
+                onDeleteNote: (note) => void removeNote(note),
+                onTagNote: (note) => openTag(note.id),
+                onToggleFavorite: (note) => void toggleFavorite(note),
+                onRenameFolder: openRenameFolder,
+                onDeleteFolder: (path) => void removeFolder(path),
+                onSelect: handleSelect,
+                onToggleSelection: toggleSelectionMode,
+                onSelectAll: selectAll,
+                onClearSelection: clearSelection,
+                onBatchMove: () => openMovePicker(Array.from(selectedIds), "Mover notas"),
+                onBatchTag: () => void batchTag(),
+                onBatchDelete: () => void batchDelete(),
+                onOpenCanvas: (canvas) => {
+                  setCanvasTarget(canvas);
+                  setView("canvas");
+                  setSidebarOpen(false);
+                },
+                onOpenBase: (base) => {
+                  setBaseTarget(base);
+                  setView("base");
+                  setSidebarOpen(false);
+                },
+                onNewCanvas: createCanvas,
+                onNewBase: createBase,
               }}
-              onNewFolder={() => {
-                setNewFolderPath("Nueva carpeta");
-                setNewFolderOpen(true);
-              }}
-              onMoveNote={(noteId, folderPath) => void moveNote(noteId, folderPath)}
-              onOpenCanvas={(canvas) => {
-                setCanvasTarget(canvas);
-                setView("canvas");
-                setSidebarOpen(false);
-              }}
-              onOpenBase={(base) => {
-                setBaseTarget(base);
-                setView("base");
-                setSidebarOpen(false);
-              }}
-              onNewCanvas={createCanvas}
-              onNewBase={createBase}
             />
 
             {(tree.tags?.length ?? 0) > 0 ? (
@@ -731,6 +1136,14 @@ views:
                   </button>
                   <button type="button" onClick={renameActive} className="btn btn-ghost h-7 w-7 p-0" title="Renombrar">
                     <PencilLine size={13} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShareOpen(true)}
+                    className="btn btn-ghost h-7 w-7 p-0"
+                    title="Compartir nota"
+                  >
+                    <Share2 size={13} />
                   </button>
                   <button type="button" onClick={openHistory} className="btn btn-ghost h-7 w-7 p-0" title="Historial">
                     <History size={13} />
@@ -841,15 +1254,34 @@ views:
                 >
                   IA
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setRightTab("files")}
+                  className={`flex-1 px-3 py-2 text-[11px] ${rightTab === "files" ? "border-b-2 border-[var(--accent)] text-[var(--text)]" : "text-[var(--muted)]"}`}
+                >
+                  Adjuntos
+                </button>
               </div>
 
               <div className="scrollbar min-h-0 flex-1 space-y-5 overflow-y-auto p-4 text-xs">
                 {rightTab === "details" ? (
                   <>
                     <section>
-                      <h3 className="mb-2 text-[10px] uppercase tracking-[0.16em] text-[var(--muted)]">
-                        Propiedades
-                      </h3>
+                      <div className="mb-2 flex items-center justify-between">
+                        <h3 className="text-[10px] uppercase tracking-[0.16em] text-[var(--muted)]">
+                          Propiedades
+                        </h3>
+                        {canWrite ? (
+                          <button
+                            type="button"
+                            className="btn btn-ghost h-6 px-1.5 text-[10px]"
+                            onClick={() => setPropertiesOpen(true)}
+                            title="Editar propiedades"
+                          >
+                            Editar
+                          </button>
+                        ) : null}
+                      </div>
                       {Object.entries(active.frontmatter ?? {}).length === 0 ? (
                         <p className="text-[11px] text-[var(--muted)]">Sin frontmatter.</p>
                       ) : (
@@ -943,6 +1375,8 @@ views:
                       </div>
                     </section>
                   </>
+                ) : rightTab === "files" ? (
+                  <AttachmentsPanel vaultId={vault.id} onToast={showToast} />
                 ) : (
                   <>
                     <p className="text-[11px] leading-5 text-[var(--muted)]">
@@ -1006,6 +1440,8 @@ views:
         vaultId={vault.id}
         vaultName={vault.name}
         canWrite={canWrite}
+        isOwner={vault.role === "owner"}
+        settings={vault.settings ?? {}}
         onChanged={() => void loadTree()}
       />
 
@@ -1028,6 +1464,23 @@ views:
               if (event.key === "Enter") void createNote();
             }}
           />
+          {templateNotes.length ? (
+            <label className="block text-[11px] text-[var(--muted)]">
+              Plantilla
+              <select
+                className="input mt-1 h-9 text-xs"
+                value={newNoteTemplate}
+                onChange={(event) => setNewNoteTemplate(event.target.value)}
+              >
+                <option value="">Sin plantilla</option>
+                {templateNotes.map((note) => (
+                  <option key={note.id} value={note.path}>
+                    {note.path}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
           <div className="flex justify-end gap-2">
             <button type="button" className="btn" onClick={() => setNewNoteOpen(false)}>
               Cancelar
@@ -1071,36 +1524,120 @@ views:
         </div>
       </Modal>
 
+      <FolderPicker
+        open={picker.open}
+        onClose={() => setPicker({ open: false, noteIds: [], title: "Mover a…" })}
+        folders={tree.folders}
+        currentPath={picker.currentPath}
+        title={picker.title}
+        description={picker.description}
+        onSelect={(folderPath) => void chooseFolder(folderPath)}
+      />
+
       <Modal
-        open={historyOpen}
-        onClose={() => setHistoryOpen(false)}
-        title="Historial de versiones"
-        subtitle={active?.path}
+        open={Boolean(renameTarget)}
+        onClose={() => setRenameTarget(null)}
+        title={renameTarget?.kind === "folder" ? "Renombrar carpeta" : "Renombrar nota"}
+        subtitle={
+          renameTarget?.kind === "folder"
+            ? "Se moverán también sus subcarpetas y notas, y se actualizarán los enlaces."
+            : "Puedes cambiar el nombre y la carpeta escribiendo la ruta completa."
+        }
       >
-        <div className="divide-y divide-[var(--border-soft)]">
-          {versions?.length === 0 ? (
-            <p className="p-5 text-xs text-[var(--muted)]">Sin versiones todavía.</p>
-          ) : (
-            versions.map((version) => (
-              <div key={version.id} className="flex items-center gap-3 px-5 py-3 text-xs">
-                <div className="min-w-0 flex-1">
-                  <div className="text-[var(--text-soft)]">
-                    {new Date(version.createdAt).toLocaleString("es-ES")}
-                  </div>
-                  <div className="text-[10px] text-[var(--muted)]">{version.source}</div>
-                </div>
-                <button
-                  type="button"
-                  className="btn h-7 text-[11px]"
-                  onClick={() => void restoreVersion(version.id)}
-                >
-                  Restaurar
-                </button>
-              </div>
-            ))
-          )}
+        <div className="space-y-4 p-5">
+          <input
+            className="input"
+            value={renameValue}
+            onChange={(event) => setRenameValue(event.target.value)}
+            placeholder={renameTarget?.kind === "folder" ? "Carpeta/Subcarpeta" : "Carpeta/Nota.md"}
+            autoFocus
+            onKeyDown={(event) => {
+              if (event.key === "Enter") void commitRename();
+            }}
+          />
+          <div className="flex justify-end gap-2">
+            <button type="button" className="btn" onClick={() => setRenameTarget(null)}>
+              Cancelar
+            </button>
+            <button type="button" className="btn btn-primary" onClick={() => void commitRename()}>
+              Renombrar
+            </button>
+          </div>
         </div>
       </Modal>
+
+      <Modal
+        open={Boolean(tagTarget)}
+        onClose={() => setTagTarget(null)}
+        title={
+          tagTarget && tagTarget.ids.length > 1
+            ? `Etiquetar ${tagTarget.ids.length} notas`
+            : "Añadir etiqueta"
+        }
+        subtitle="Se añade al frontmatter de cada nota."
+      >
+        <div className="space-y-4 p-5">
+          <input
+            className="input"
+            value={tagTarget?.value ?? ""}
+            onChange={(event) =>
+              setTagTarget((current) =>
+                current ? { ...current, value: event.target.value } : current,
+              )
+            }
+            placeholder="etiqueta"
+            autoFocus
+            onKeyDown={(event) => {
+              if (event.key === "Enter") void commitTag();
+            }}
+          />
+          <div className="flex justify-end gap-2">
+            <button type="button" className="btn" onClick={() => setTagTarget(null)}>
+              Cancelar
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={!tagTarget?.value.trim()}
+              onClick={() => void commitTag()}
+            >
+              Añadir
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {active ? (
+        <VersionHistory
+          open={historyOpen}
+          onClose={() => setHistoryOpen(false)}
+          vaultId={vault.id}
+          noteId={active.id}
+          notePath={active.path}
+          currentContent={content}
+          onRestored={() => void onVersionRestored()}
+        />
+      ) : null}
+
+      {active ? (
+        <ShareModal
+          open={shareOpen}
+          onClose={() => setShareOpen(false)}
+          vaultId={vault.id}
+          noteId={active.id}
+          notePath={active.path}
+          onToast={showToast}
+        />
+      ) : null}
+
+      {active ? (
+        <PropertiesEditor
+          open={propertiesOpen}
+          onClose={() => setPropertiesOpen(false)}
+          frontmatter={active.frontmatter ?? {}}
+          onSave={saveProperties}
+        />
+      ) : null}
 
       <ResultModal
         open={Boolean(llmResult)}

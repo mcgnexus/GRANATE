@@ -3,6 +3,7 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { folders, notes } from "@/lib/db/schema";
 import { withVault, apiError } from "@/lib/http";
+import { renameFolder } from "@/lib/notes";
 import { normalizeVaultPath } from "@/lib/utils";
 
 type Ctx = { params: Promise<{ vaultId: string }> };
@@ -55,6 +56,34 @@ export async function POST(request: NextRequest, ctx: Ctx) {
     }
 
     return Response.json({ ok: true, path });
+  } catch (error) {
+    if (error instanceof Error && !("status" in error)) {
+      return Response.json({ error: error.message }, { status: 400 });
+    }
+    return apiError(error);
+  }
+}
+
+export async function PATCH(request: NextRequest, ctx: Ctx) {
+  try {
+    const { vaultId } = await ctx.params;
+    const access = await withVault(request, vaultId, true);
+    if ("response" in access) return access.response;
+
+    const body = (await request.json().catch(() => ({}))) as {
+      path?: string;
+      newPath?: string;
+    };
+    const from = validateFolderPath(body.path ?? "");
+    const to = validateFolderPath(body.newPath ?? "");
+
+    const result = await renameFolder({
+      vaultId,
+      userId: access.user.id,
+      from,
+      to,
+    });
+    return Response.json({ ok: true, ...result, path: to });
   } catch (error) {
     if (error instanceof Error && !("status" in error)) {
       return Response.json({ error: error.message }, { status: 400 });

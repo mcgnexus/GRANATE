@@ -26,6 +26,11 @@ export function ThemeToggle({ className = "" }: { className?: string }) {
     } catch {
       // ignore
     }
+    void fetch("/api/v1/preferences", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ theme: next ? "light" : "dark" }),
+    }).catch(() => undefined);
     for (const listener of listeners) listener();
   }
 

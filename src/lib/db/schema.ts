@@ -201,11 +201,32 @@ export const notes = pgTable(
     updatedBy: uuid("updated_by").references(() => users.id, { onDelete: "set null" }),
     ...timestamps,
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    pinnedAt: timestamp("pinned_at", { withTimezone: true }),
   },
   (table) => [
     uniqueIndex("notes_vault_path_ci").on(table.vaultId, sql`lower(${table.path})`),
     index("notes_vault_updated_idx").on(table.vaultId, table.updatedAt),
     index("notes_vault_deleted_idx").on(table.vaultId, table.deletedAt),
+    index("notes_vault_pinned_idx").on(table.vaultId, table.pinnedAt),
+  ],
+);
+
+/** Per-user recently opened notes. */
+export const noteOpens = pgTable(
+  "note_opens",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    noteId: uuid("note_id")
+      .notNull()
+      .references(() => notes.id, { onDelete: "cascade" }),
+    openCount: integer("open_count").notNull().default(1),
+    lastOpenedAt: timestamp("last_opened_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.noteId] }),
+    index("note_opens_user_idx").on(table.userId, table.lastOpenedAt),
   ],
 );
 
@@ -405,6 +426,58 @@ export const auditLogs = pgTable(
   },
   (table) => [index("audit_logs_vault_idx").on(table.vaultId, table.createdAt)],
 );
+
+// ---------------------------------------------------------------------------
+// Preferences, sharing and backups
+// ---------------------------------------------------------------------------
+
+export const userPreferences = pgTable("user_preferences", {
+  userId: uuid("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  palette: text("palette").notNull().default("granite"),
+  theme: text("theme").notNull().default("dark"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const shareLinks = pgTable(
+  "share_links",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    vaultId: uuid("vault_id")
+      .notNull()
+      .references(() => vaults.id, { onDelete: "cascade" }),
+    noteId: uuid("note_id").references(() => notes.id, { onDelete: "cascade" }),
+    token: text("token").notNull(),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("share_links_token_unique").on(table.token),
+    index("share_links_vault_idx").on(table.vaultId, table.createdAt),
+  ],
+);
+
+export const backups = pgTable(
+  "backups",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    vaultId: uuid("vault_id")
+      .notNull()
+      .references(() => vaults.id, { onDelete: "cascade" }),
+    path: text("path").notNull(),
+    blobUrl: text("blob_url").notNull(),
+    data: text("data"),
+    size: integer("size").notNull().default(0),
+    noteCount: integer("note_count").notNull().default(0),
+    kind: text("kind").notNull().default("manual"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [index("backups_vault_idx").on(table.vaultId, table.createdAt)],
+);
+
 
 export type User = typeof users.$inferSelect;
 export type Vault = typeof vaults.$inferSelect;

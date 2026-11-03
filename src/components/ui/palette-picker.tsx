@@ -23,6 +23,11 @@ function setPalette(id: string) {
   } catch {
     // ignore
   }
+  void fetch("/api/v1/preferences", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ palette: id }),
+  }).catch(() => undefined);
   for (const listener of listeners) listener();
 }
 

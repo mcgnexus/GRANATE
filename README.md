@@ -109,6 +109,8 @@ contraseña.
 | `GEMINI_EMBEDDING_MODEL` | No | `gemini-embedding-001` |
 | `EMBEDDING_DIMENSIONS` | No | `1536` (compatible con HNSW de pgvector) |
 | `DAILY_TOKEN_QUOTA` | No | Límite por usuario y día |
+| `BLOB_READ_WRITE_TOKEN` | No | Adjuntos y backups en Vercel Blob; sin él se usa Postgres |
+| `CRON_SECRET` | No | Protege `/api/cron/backup` con `Authorization: Bearer` |
 | `RESEND_API_KEY` / `EMAIL_FROM` | No | Verificación por email |
 
 ### Google OAuth
@@ -127,11 +129,16 @@ En local: `http://localhost:3000/api/auth/google/callback`.
 
 - CRUD de bóvedas con roles (`owner`, `editor`, `viewer`).
 - Árbol de carpetas y notas, creación, renombrado, papelera e historial de versiones.
-- **Carpetas**: botón de nueva carpeta (con anidamiento `Carpeta/Subcarpeta`) y **arrastrar notas dentro y fuera** de ellas. La fila **Raíz** sirve para devolver una nota al nivel superior.
+- **Carpetas**: botón de nueva carpeta (con anidamiento `Carpeta/Subcarpeta`), **arrastrar notas dentro y fuera** y **menú contextual** (clic derecho o botón ⋯) para renombrar, mover, etiquetar, crear subcarpetas o eliminar.
+- **Selección múltiple** (`Ctrl/Cmd+clic`, `Shift+clic` o el botón de selección) para mover, etiquetar o borrar varias notas en lote.
+- **Vistas inteligentes**: Favoritos, Recientes, Huérfanas (sin enlaces) y Sin etiquetas.
 - Autosave con debounce y `Ctrl/Cmd+S`.
-- Frontmatter YAML editable como propiedades (se conserva el Markdown original).
-- Adjuntos hasta 10 MB (guardados en Postgres como base64 en este MVP).
-- Exportación completa a ZIP sin lock-in.
+- Frontmatter YAML editable con un formulario de **propiedades** tipadas.
+- **Historial visual** con diff línea a línea y restauración de versiones.
+- **Plantillas** (`Plantillas/`) y **nota diaria** (`Diario/AAAA-MM-DD.md`) con variables `{{title}}`, `{{date}}`, `{{time}}`.
+- **Gestión de etiquetas**: renombrar, fusionar y eliminar en toda la bóveda.
+- Adjuntos hasta 10 MB (Vercel Blob si hay token; si no, Postgres) con galería, copia de `![[…]]` y borrado.
+- Exportación completa a ZIP y backups manuales/automáticos.
 
 ### Wikilinks, backlinks y grafo
 
@@ -173,21 +180,45 @@ granate search "sensor de humedad"
 granate get "10 - TecRural/Guia.md"
 granate ask "¿qué decisiones pendientes hay?"
 granate export boveda.zip
+granate sync ~/Obsidian/MiBoveda --vault <id> --dry-run
+granate sync ~/Obsidian/MiBoveda --vault <id>
 ```
 
-El token se crea en **Ajustes → Tokens de API**.
+El token se crea en **Ajustes → Tokens de API**. `sync` es bidireccional, guarda un
+manifiesto `.granate-sync.json` y ante cambios en ambos lados crea
+`nombre.conflicto-local-<fecha>.md` antes de traer la versión remota.
+
+### Compartir
+
+Cada nota tiene un botón **Compartir** para crear enlaces públicos de solo lectura con
+caducidad opcional. Desde **Ajustes → Compartir bóveda** se crea un índice público de toda la
+bóveda. Los enlaces se pueden revocar y no permiten editar ni ver la papelera.
+
+### MCP
+
+`mcp/granate-mcp.mjs` es un servidor MCP stdio sin dependencias con herramientas para listar
+bóvedas, buscar, leer, escribir y listar etiquetas. Instrucciones en
+[`mcp/README.md`](mcp/README.md).
+
+### Backups
+
+`POST /api/v1/vaults/<id>/backups` crea un ZIP; si `BLOB_READ_WRITE_TOKEN` existe se guarda en
+Vercel Blob y, si no, en Postgres (máximo 25 MB). El cron diario de `vercel.json` conserva las
+7 últimas copias por bóveda. Protege el endpoint con `CRON_SECRET`.
 
 ## Despliegue en Vercel
 
 1. Sube el repo a GitHub e impórtalo en Vercel.
 2. Añade las variables de entorno del apartado anterior (`APP_URL` con el dominio final).
 3. Despliega. El framework se detecta automáticamente.
-4. Ejecuta `drizzle/0000_init.sql` contra tu base de Neon (una sola vez).
+4. Ejecuta en orden `drizzle/0000_init.sql`, `drizzle/0001_features.sql` y
+   `drizzle/0002_backup_data.sql` contra tu base de Neon (una sola vez cada uno).
 
 Notas para el plan Hobby:
 
 - Funciones de 60 s: el indexado se hace por nota al guardar y el backfill en lotes de 15 desde Ajustes.
-- Cron: no se usa en esta versión; añade `vercel.json` cuando quieras mantenimiento nocturno.
+- **Cron diario** (`vercel.json`) para backups. Define `CRON_SECRET` y `BLOB_READ_WRITE_TOKEN`
+  si quieres almacenamiento externo; sin Blob las copias van a Postgres.
 - Límite de cuerpo: 4,5 MB por petición en Hobby. Los ZIP de importación grandes deben dividirse.
 
 ## Seguridad
@@ -206,7 +237,13 @@ Notas para el plan Hobby:
 npm test          # unitarios de frontmatter, enlaces, chunks, bases y canvas
 npm run lint
 npm run typecheck
+BASE_URL=https://granate-five.vercel.app \
+  GRANATE_E2E_EMAIL=... GRANATE_E2E_PASSWORD=... npm run test:e2e
 ```
+
+El workflow `.github/workflows/e2e.yml` ejecuta Playwright contra el preview de Vercel cuando
+existen los secretos `GRANATE_E2E_EMAIL` y `GRANATE_E2E_PASSWORD` (y `E2E_BASE_URL` para
+ejecuciones manuales). Cada test crea una bóveda temporal y la elimina al terminar.
 
 ## Estructura
 
@@ -224,28 +261,29 @@ src/
     bases.ts           parser/evaluador de .base
     canvas.ts          tipos JSON Canvas
     import-export.ts   ZIP de Obsidian
-cli/                   CLI sin dependencias
-drizzle/               SQL de inicialización
+cli/                   CLI sin dependencias (incluye sync bidireccional)
+mcp/                   servidor MCP stdio
+drizzle/               SQL de inicialización y migraciones
 docs/                  arquitectura y compatibilidad con Obsidian
-tests/                 Vitest
+tests/                 Vitest + Playwright (`tests/e2e`)
 ```
 
 ## Limitaciones conocidas
 
-1. **Sin sync continuo con Obsidian**: se importa un ZIP y se exporta. El diseño para un agente CLI está documentado en `docs/roadmap.md`.
-2. **Arrastrar notas** funciona con ratón/escritorio. En móvil, usa el botón de renombrar (lápiz) y escribe la nueva ruta para moverla.
-3. **Adjuntos en Postgres**: válido para bóvedas pequeñas; para >100 MB hay que moverlos a Vercel Blob/S3.
+1. **Sync**: el CLI resuelve conflictos con copias locales, pero no hay demonio de sincronización continua ni resolución visual de conflictos.
+2. **Arrastrar notas** funciona con ratón/escritorio. En móvil usa el menú ⋯ → **Mover a…**.
+3. **Adjuntos**: si no hay Vercel Blob se guardan en Postgres; el límite práctico recomendado es <100 MB por bóveda.
 4. **Bases**: subconjunto, sin fórmulas, resúmenes ni vistas de mapa.
 5. **Canvas**: edición básica (mover, crear tarjeta, conectar); sin redimensionado avanzado ni colores por nodo.
-6. **PWA**: shell offline; las notas requieren conexión salvo que se añada caché IndexedDB (v1.1).
+6. **PWA**: shell offline; las notas requieren conexión salvo que se añada caché IndexedDB.
 7. **Embeddings**: Gemini a 1536 dimensiones; cambiar de modelo exige reindexar.
 8. **PDF/Word**: no se indexan; solo Markdown.
+9. **Blob**: el plan actual de Vercel puede impedir crear un store nuevo; la app funciona con el fallback de Postgres.
 
 ## Roadmap
 
-- v1.1: fórmulas de Bases, historial visual de versiones, caché offline de notas, adjuntos en Blob.
-- v1.2: agente CLI de sync bidireccional con detección de conflictos.
-- v1.3: MCP server para consultar la bóveda desde OpenCode/Claude, comentarios y colaboración en tiempo real.
+- v1.2: caché offline de notas, resolución visual de conflictos, comentarios y colaboración en tiempo real.
+- v1.3: automatizaciones (reglas por etiqueta), vistas de mapa y fórmulas de Bases.
 
 ## Licencia
 

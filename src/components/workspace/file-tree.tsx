@@ -1,26 +1,76 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  CheckSquare,
   ChevronRight,
+  FilePlus2,
   FileText,
   Folder,
   FolderOpen,
   FolderPlus,
+  History,
   Home,
   LayoutDashboard,
+  ListChecks,
+  MoreHorizontal,
+  Pencil,
   Plus,
+  Square,
   SquareKanban,
+  Star,
+  Tag,
+  Trash2,
+  FolderInput,
+  X,
 } from "lucide-react";
+import { ContextMenu, type MenuEntry } from "@/components/ui/context-menu";
 
-export type TreeNote = { id: string; path: string; title: string };
+export type TreeNote = {
+  id: string;
+  path: string;
+  title: string;
+  pinnedAt?: string | null;
+};
 export type TreeCanvas = { id: string; path: string };
 export type TreeBase = { id: string; path: string };
 
+export type TreeSmartViews = {
+  favorites: TreeNote[];
+  recents: TreeNote[];
+  orphans: TreeNote[];
+  untagged: TreeNote[];
+};
+
+type SmartViewKey = keyof TreeSmartViews;
+
+export type FileTreeActions = {
+  onOpen: (note: TreeNote) => void;
+  onNewNote: (folder?: string) => void;
+  onNewFolder: (parent?: string) => void;
+  onDropNote: (noteId: string, folderPath: string) => void;
+  onMoveNote: (note: TreeNote) => void;
+  onRenameNote: (note: TreeNote) => void;
+  onDeleteNote: (note: TreeNote) => void;
+  onTagNote: (note: TreeNote) => void;
+  onToggleFavorite: (note: TreeNote) => void;
+  onRenameFolder: (path: string) => void;
+  onDeleteFolder: (path: string) => void;
+  onSelect: (noteId: string, shift: boolean) => void;
+  onToggleSelection: () => void;
+  onSelectAll: () => void;
+  onClearSelection: () => void;
+  onBatchMove: () => void;
+  onBatchTag: () => void;
+  onBatchDelete: () => void;
+  onOpenCanvas: (canvas: TreeCanvas) => void;
+  onOpenBase: (base: TreeBase) => void;
+  onNewCanvas: () => void;
+  onNewBase: () => void;
+};
+
 type FolderNode = { kind: "folder"; name: string; path: string; children: GraphNode[] };
-type GraphNode =
-  | FolderNode
-  | { kind: "note"; name: string; path: string; id: string };
+type GraphNode = FolderNode | { kind: "note"; name: string; path: string; id: string; pinnedAt?: string | null };
 
 function buildNodes(notes: TreeNote[], folders: string[]): FolderNode {
   const root: FolderNode = { kind: "folder", name: "", path: "", children: [] };
@@ -55,6 +105,7 @@ function buildNodes(notes: TreeNote[], folders: string[]): FolderNode {
       name: note.path.split("/").pop()?.replace(/\.md$/, "") ?? note.title,
       path: note.path,
       id: note.id,
+      pinnedAt: note.pinnedAt,
     });
   }
 
@@ -69,91 +120,245 @@ function buildNodes(notes: TreeNote[], folders: string[]): FolderNode {
   return root;
 }
 
+const SMART_VIEW_META: Array<{
+  key: SmartViewKey;
+  label: string;
+  icon: React.ReactNode;
+}> = [
+  { key: "favorites", label: "Favoritos", icon: <Star size={11} /> },
+  { key: "recents", label: "Recientes", icon: <History size={11} /> },
+  { key: "orphans", label: "Huérfanas", icon: <FileText size={11} /> },
+  { key: "untagged", label: "Sin etiquetas", icon: <Tag size={11} /> },
+];
+
 export function FileTree({
   notes,
   folders,
   canvases,
   bases,
   activeId,
-  onOpen,
-  onNewNote,
-  onNewFolder,
-  onMoveNote,
-  onOpenCanvas,
-  onOpenBase,
-  onNewCanvas,
-  onNewBase,
+  views,
+  selectionMode,
+  selectedIds,
+  actions,
 }: {
   notes: TreeNote[];
   folders: string[];
   canvases: TreeCanvas[];
   bases: TreeBase[];
   activeId?: string;
-  onOpen: (note: TreeNote) => void;
-  onNewNote: () => void;
-  onNewFolder: () => void;
-  onMoveNote: (noteId: string, folderPath: string) => void;
-  onOpenCanvas: (canvas: TreeCanvas) => void;
-  onOpenBase: (base: TreeBase) => void;
-  onNewCanvas: () => void;
-  onNewBase: () => void;
+  views?: TreeSmartViews;
+  selectionMode: boolean;
+  selectedIds: Set<string>;
+  actions: FileTreeActions;
 }) {
   const tree = useMemo(() => buildNodes(notes, folders), [notes, folders]);
-  const allFolders = useMemo(
-    () => new Set(folders.filter(Boolean)),
-    [folders],
-  );
+  const allFolders = useMemo(() => new Set(folders.filter(Boolean)), [folders]);
   const [expanded, setExpanded] = useState<Set<string>>(allFolders);
+  const knownFolders = useRef<Set<string>>(allFolders);
   const [dragOver, setDragOver] = useState<string | null>(null);
+  const [smartView, setSmartView] = useState<SmartViewKey | null>(null);
+  const [menu, setMenu] = useState<{
+    x: number;
+    y: number;
+    note?: TreeNote;
+    folder?: string;
+  } | null>(null);
 
-  function dropNote(event: React.DragEvent, folderPath: string) {
-    event.preventDefault();
-    const noteId = event.dataTransfer.getData("text/plain");
-    setDragOver(null);
-    if (!noteId) return;
-    if (folderPath) {
-      setExpanded((previous) => new Set(previous).add(folderPath));
-    }
-    onMoveNote(noteId, folderPath);
-  }
+  useEffect(() => {
+    const nextKnown = new Set(folders.filter(Boolean));
+    setExpanded((previous) => {
+      const next = new Set(previous);
+      for (const folder of nextKnown) {
+        if (!knownFolders.current.has(folder)) next.add(folder);
+      }
+      for (const folder of next) {
+        if (!nextKnown.has(folder)) next.delete(folder);
+      }
+      return next;
+    });
+    knownFolders.current = nextKnown;
+  }, [folders]);
 
   function toggle(path: string) {
-    setExpanded((prev) => {
-      const next = new Set(prev);
+    setExpanded((previous) => {
+      const next = new Set(previous);
       if (next.has(path)) next.delete(path);
       else next.add(path);
       return next;
     });
   }
 
-  function renderNode(node: GraphNode, depth: number): React.ReactNode {
-    if (node.kind === "note") {
-      const active = node.id === activeId;
-      return (
-        <button
-          key={`n-${node.id}`}
-          type="button"
-          draggable
-          onDragStart={(event) => {
-            event.dataTransfer.setData("text/plain", node.id);
-            event.dataTransfer.effectAllowed = "move";
-          }}
-          onDragEnd={() => setDragOver(null)}
-          onClick={() => onOpen({ id: node.id, path: node.path, title: node.name })}
-          className={`group flex w-full cursor-grab items-center gap-1.5 rounded-md py-[5px] pr-2 text-left text-[12.5px] transition-colors active:cursor-grabbing ${
-            active
+  function dropNote(event: React.DragEvent, folderPath: string) {
+    event.preventDefault();
+    event.stopPropagation();
+    const noteId = event.dataTransfer.getData("text/plain");
+    setDragOver(null);
+    if (!noteId) return;
+    if (folderPath) setExpanded((previous) => new Set(previous).add(folderPath));
+    actions.onDropNote(noteId, folderPath);
+  }
+
+  function openNoteMenu(event: React.MouseEvent, note: TreeNote) {
+    event.preventDefault();
+    event.stopPropagation();
+    setMenu({ x: event.clientX, y: event.clientY, note });
+  }
+
+  function openNoteMenuFromButton(event: React.MouseEvent, note: TreeNote) {
+    event.preventDefault();
+    event.stopPropagation();
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    setMenu({ x: rect.right - 8, y: rect.bottom + 4, note });
+  }
+
+  function openFolderMenu(event: React.MouseEvent, path: string) {
+    event.preventDefault();
+    event.stopPropagation();
+    setMenu({ x: event.clientX, y: event.clientY, folder: path });
+  }
+
+  function openFolderMenuFromButton(event: React.MouseEvent, path: string) {
+    event.preventDefault();
+    event.stopPropagation();
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    setMenu({ x: rect.right - 8, y: rect.bottom + 4, folder: path });
+  }
+
+  function noteEntries(note: TreeNote): MenuEntry[] {
+    return [
+      {
+        label: "Abrir",
+        icon: <FileText size={13} />,
+        onClick: () => actions.onOpen(note),
+      },
+      {
+        label: "Renombrar",
+        icon: <Pencil size={13} />,
+        onClick: () => actions.onRenameNote(note),
+      },
+      {
+        label: "Mover a…",
+        icon: <FolderInput size={13} />,
+        onClick: () => actions.onMoveNote(note),
+      },
+      {
+        label: "Etiquetar",
+        icon: <Tag size={13} />,
+        onClick: () => actions.onTagNote(note),
+      },
+      {
+        label: note.pinnedAt ? "Quitar de favoritos" : "Añadir a favoritos",
+        icon: <Star size={13} />,
+        onClick: () => actions.onToggleFavorite(note),
+      },
+      { separator: true },
+      {
+        label: "Mover a papelera",
+        icon: <Trash2 size={13} />,
+        danger: true,
+        onClick: () => actions.onDeleteNote(note),
+      },
+    ];
+  }
+
+  function folderEntries(path: string): MenuEntry[] {
+    return [
+      {
+        label: "Nueva nota dentro",
+        icon: <FilePlus2 size={13} />,
+        onClick: () => actions.onNewNote(path),
+      },
+      {
+        label: "Nueva subcarpeta",
+        icon: <FolderPlus size={13} />,
+        onClick: () => actions.onNewFolder(path),
+      },
+      { separator: true },
+      {
+        label: "Renombrar carpeta",
+        icon: <Pencil size={13} />,
+        onClick: () => actions.onRenameFolder(path),
+      },
+      {
+        label: "Eliminar carpeta",
+        icon: <Trash2 size={13} />,
+        danger: true,
+        onClick: () => actions.onDeleteFolder(path),
+      },
+    ];
+  }
+
+  function renderNoteRow(note: TreeNote, depth: number, extraKey = "") {
+    const active = note.id === activeId;
+    const selected = selectedIds.has(note.id);
+    return (
+      <div
+        key={`n-${note.id}${extraKey}`}
+        draggable
+        onDragStart={(event) => {
+          event.dataTransfer.setData("text/plain", note.id);
+          event.dataTransfer.effectAllowed = "move";
+        }}
+        onDragEnd={() => setDragOver(null)}
+        onContextMenu={(event) => openNoteMenu(event, note)}
+        className={`group flex w-full items-center rounded-md pr-1 transition-colors ${
+          selected
+            ? "bg-[var(--accent-soft)] text-[var(--text)]"
+            : active
               ? "bg-[var(--accent-soft)] text-[var(--text)]"
               : "text-[var(--text-soft)] hover:bg-[var(--panel-2)]"
-          }`}
-          style={{ paddingLeft: `${depth * 12 + 8}px` }}
-          title={`${node.path} · arrastra a una carpeta`}
+        }`}
+        style={{ paddingLeft: `${depth * 12 + 4}px` }}
+      >
+        <button
+          type="button"
+          onClick={(event) => {
+            if (selectionMode || event.ctrlKey || event.metaKey || event.shiftKey) {
+              event.preventDefault();
+              actions.onSelect(note.id, event.shiftKey);
+              return;
+            }
+            actions.onOpen(note);
+          }}
+          className="flex min-w-0 flex-1 cursor-grab items-center gap-1.5 py-[5px] text-left text-[12.5px] active:cursor-grabbing"
+          title={`${note.path} · clic derecho para acciones`}
         >
-          <FileText
-            size={13}
-            className={active ? "text-[var(--accent-2)]" : "text-[var(--muted)]"}
-          />
-          <span className="truncate">{node.name}</span>
+          {selectionMode ? (
+            selected ? (
+              <CheckSquare size={13} className="shrink-0 text-[var(--accent-2)]" />
+            ) : (
+              <Square size={13} className="shrink-0 text-[var(--muted)]" />
+            )
+          ) : (
+            <FileText
+              size={13}
+              className={`shrink-0 ${active ? "text-[var(--accent-2)]" : "text-[var(--muted)]"}`}
+            />
+          )}
+          <span className="truncate">{note.path.split("/").pop()?.replace(/\.md$/, "")}</span>
+          {note.pinnedAt ? (
+            <Star size={10} className="shrink-0 text-[var(--gold)]" fill="currentColor" />
+          ) : null}
         </button>
+        <button
+          type="button"
+          aria-label="Acciones de la nota"
+          title="Acciones"
+          onClick={(event) => openNoteMenuFromButton(event, note)}
+          className="grid h-6 w-6 shrink-0 place-items-center rounded text-[var(--muted)] opacity-100 hover:bg-[var(--panel)] hover:text-[var(--text)] sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100"
+        >
+          <MoreHorizontal size={13} />
+        </button>
+      </div>
+    );
+  }
+
+  function renderNode(node: GraphNode, depth: number): React.ReactNode {
+    if (node.kind === "note") {
+      return renderNoteRow(
+        { id: node.id, path: node.path, title: node.name, pinnedAt: node.pinnedAt },
+        depth,
       );
     }
 
@@ -161,11 +366,10 @@ export function FileTree({
     return (
       <div key={`f-${node.path || "root"}`}>
         {node.path ? (
-          <button
-            type="button"
-            onClick={() => toggle(node.path)}
+          <div
             onDragOver={(event) => {
               event.preventDefault();
+              event.stopPropagation();
               event.dataTransfer.dropEffect = "move";
               setDragOver(node.path);
             }}
@@ -175,25 +379,41 @@ export function FileTree({
               }
             }}
             onDrop={(event) => dropNote(event, node.path)}
-            className={`flex w-full items-center gap-1.5 rounded-md py-[5px] pr-2 text-left text-[12.5px] text-[var(--text-soft)] transition-colors ${
+            onContextMenu={(event) => openFolderMenu(event, node.path)}
+            className={`group flex w-full items-center rounded-md pr-1 transition-colors ${
               dragOver === node.path
                 ? "bg-[var(--accent-soft)] ring-1 ring-[var(--accent)]"
-                : "hover:bg-[var(--panel-2)]"
+                : "text-[var(--text-soft)] hover:bg-[var(--panel-2)]"
             }`}
-            style={{ paddingLeft: `${depth * 12 + 4}px` }}
-            title={`${node.path} · suelta aquí una nota`}
+            style={{ paddingLeft: `${depth * 12 + 2}px` }}
           >
-            <ChevronRight
-              size={12}
-              className={`text-[var(--muted)] transition-transform ${open ? "rotate-90" : ""}`}
-            />
-            {open ? (
-              <FolderOpen size={14} className="text-[var(--gold)]" />
-            ) : (
-              <Folder size={14} className="text-[var(--gold)]" />
-            )}
-            <span className="truncate">{node.name}</span>
-          </button>
+            <button
+              type="button"
+              onClick={() => toggle(node.path)}
+              className="flex min-w-0 flex-1 items-center gap-1.5 py-[5px] text-left text-[12.5px]"
+              title={`${node.path} · suelta aquí una nota`}
+            >
+              <ChevronRight
+                size={12}
+                className={`shrink-0 text-[var(--muted)] transition-transform ${open ? "rotate-90" : ""}`}
+              />
+              {open ? (
+                <FolderOpen size={14} className="shrink-0 text-[var(--gold)]" />
+              ) : (
+                <Folder size={14} className="shrink-0 text-[var(--gold)]" />
+              )}
+              <span className="truncate">{node.name}</span>
+            </button>
+            <button
+              type="button"
+              aria-label="Acciones de la carpeta"
+              title="Acciones"
+              onClick={(event) => openFolderMenuFromButton(event, node.path)}
+              className="grid h-6 w-6 shrink-0 place-items-center rounded text-[var(--muted)] opacity-100 hover:bg-[var(--panel)] hover:text-[var(--text)] sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100"
+            >
+              <MoreHorizontal size={13} />
+            </button>
+          </div>
         ) : null}
         {open || !node.path ? (
           <div>
@@ -204,11 +424,15 @@ export function FileTree({
     );
   }
 
+  const activeViewNotes = smartView && views ? views[smartView] : null;
+
   return (
     <div className="flex h-full flex-col">
       <div
         className={`flex items-center justify-between px-3 py-2 transition-colors ${
-          dragOver === "__root__" ? "bg-[var(--accent-soft)] ring-1 ring-inset ring-[var(--accent)]" : ""
+          dragOver === "__root__"
+            ? "bg-[var(--accent-soft)] ring-1 ring-inset ring-[var(--accent)]"
+            : ""
         }`}
         onDragOver={(event) => {
           event.preventDefault();
@@ -229,7 +453,17 @@ export function FileTree({
         <div className="flex items-center gap-0.5">
           <button
             type="button"
-            onClick={onNewFolder}
+            onClick={actions.onToggleSelection}
+            className={`btn btn-ghost h-6 w-6 p-0 ${
+              selectionMode ? "bg-[var(--accent-soft)] text-[var(--text)]" : ""
+            }`}
+            title={selectionMode ? "Salir de selección" : "Seleccionar varias notas"}
+          >
+            <ListChecks size={14} />
+          </button>
+          <button
+            type="button"
+            onClick={() => actions.onNewFolder()}
             className="btn btn-ghost h-6 w-6 p-0"
             title="Nueva carpeta"
           >
@@ -237,7 +471,7 @@ export function FileTree({
           </button>
           <button
             type="button"
-            onClick={onNewNote}
+            onClick={() => actions.onNewNote()}
             className="btn btn-ghost h-6 w-6 p-0"
             title="Nueva nota"
           >
@@ -245,6 +479,7 @@ export function FileTree({
           </button>
         </div>
       </div>
+
       <div className="scrollbar min-h-0 flex-1 overflow-y-auto px-1.5 pb-4">
         <div
           onDragOver={(event) => {
@@ -268,12 +503,63 @@ export function FileTree({
           <Home size={12} />
           Raíz
         </div>
-        {renderNode(tree, 0)}
-        {notes.length === 0 && folders.length === 0 ? (
-          <p className="px-3 py-4 text-xs leading-5 text-[var(--muted)]">
-            Bóveda vacía. Crea una nota, una carpeta o importa tu ZIP de Obsidian.
-          </p>
+
+        {views ? (
+          <div className="mb-2 grid grid-cols-2 gap-1 px-0.5">
+            {SMART_VIEW_META.map((view) => {
+              const count = views[view.key].length;
+              const active = smartView === view.key;
+              return (
+                <button
+                  key={view.key}
+                  type="button"
+                  onClick={() => setSmartView(active ? null : view.key)}
+                  className={`flex items-center gap-1 rounded-md border px-1.5 py-1 text-left text-[10px] transition-colors ${
+                    active
+                      ? "border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--text)]"
+                      : "border-[var(--border-soft)] text-[var(--text-soft)] hover:bg-[var(--panel-2)]"
+                  }`}
+                  title={`${view.label}: ${count}`}
+                >
+                  {view.icon}
+                  <span className="min-w-0 flex-1 truncate">{view.label}</span>
+                  <span className="text-[9px] text-[var(--muted)]">{count}</span>
+                </button>
+              );
+            })}
+          </div>
         ) : null}
+
+        {activeViewNotes ? (
+          <div>
+            <div className="mb-1 flex items-center gap-1 px-1">
+              <button
+                type="button"
+                onClick={() => setSmartView(null)}
+                className="btn btn-ghost h-6 gap-1 px-1.5 text-[10px]"
+              >
+                <ChevronRight size={12} className="rotate-180" /> Volver al árbol
+              </button>
+              <span className="ml-auto text-[9px] text-[var(--muted)]">
+                {activeViewNotes.length}
+              </span>
+            </div>
+            {activeViewNotes.length === 0 ? (
+              <p className="px-2 py-4 text-[11px] text-[var(--muted)]">Nada por aquí.</p>
+            ) : (
+              activeViewNotes.map((note) => renderNoteRow(note, 0, `-${smartView}`))
+            )}
+          </div>
+        ) : (
+          <>
+            {renderNode(tree, 0)}
+            {notes.length === 0 && folders.length === 0 ? (
+              <p className="px-3 py-4 text-xs leading-5 text-[var(--muted)]">
+                Bóveda vacía. Crea una nota, una carpeta o importa tu ZIP de Obsidian.
+              </p>
+            ) : null}
+          </>
+        )}
 
         <div className="mt-5 flex items-center justify-between px-2 py-1">
           <span className="text-[10px] font-medium uppercase tracking-[0.18em] text-[var(--muted)]">
@@ -281,7 +567,7 @@ export function FileTree({
           </span>
           <button
             type="button"
-            onClick={onNewCanvas}
+            onClick={actions.onNewCanvas}
             className="btn btn-ghost h-6 w-6 p-0"
             title="Nuevo canvas"
           >
@@ -292,7 +578,7 @@ export function FileTree({
           <button
             key={canvas.id}
             type="button"
-            onClick={() => onOpenCanvas(canvas)}
+            onClick={() => actions.onOpenCanvas(canvas)}
             className="flex w-full items-center gap-1.5 rounded-md py-[5px] pl-3 pr-2 text-left text-[12.5px] text-[var(--text-soft)] hover:bg-[var(--panel-2)]"
           >
             <LayoutDashboard size={13} className="text-[var(--blue)]" />
@@ -309,7 +595,7 @@ export function FileTree({
           </span>
           <button
             type="button"
-            onClick={onNewBase}
+            onClick={actions.onNewBase}
             className="btn btn-ghost ml-auto h-6 w-6 p-0"
             title="Nueva base"
           >
@@ -320,7 +606,7 @@ export function FileTree({
           <button
             key={base.id}
             type="button"
-            onClick={() => onOpenBase(base)}
+            onClick={() => actions.onOpenBase(base)}
             className="flex w-full items-center gap-1.5 rounded-md py-[5px] pl-3 pr-2 text-left text-[12.5px] text-[var(--text-soft)] hover:bg-[var(--panel-2)]"
           >
             <SquareKanban size={13} className="text-[var(--green)]" />
@@ -331,6 +617,60 @@ export function FileTree({
           <p className="px-3 py-1 text-[11px] text-[var(--muted)]">Sin bases todavía.</p>
         ) : null}
       </div>
+
+      {selectionMode ? (
+        <div className="shrink-0 border-t border-[var(--border)] bg-[var(--panel)] p-2">
+          <div className="flex items-center gap-1 text-[10px] text-[var(--muted)]">
+            <span className="flex-1">{selectedIds.size} seleccionadas</span>
+            <button type="button" className="btn btn-ghost h-6 px-1.5 text-[10px]" onClick={actions.onSelectAll}>
+              Todo
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost h-6 w-6 p-0"
+              onClick={actions.onClearSelection}
+              title="Salir de selección"
+            >
+              <X size={12} />
+            </button>
+          </div>
+          <div className="mt-1.5 grid grid-cols-3 gap-1">
+            <button
+              type="button"
+              className="btn h-7 justify-center gap-1 px-1 text-[10px]"
+              disabled={!selectedIds.size}
+              onClick={actions.onBatchMove}
+            >
+              <FolderInput size={12} /> Mover
+            </button>
+            <button
+              type="button"
+              className="btn h-7 justify-center gap-1 px-1 text-[10px]"
+              disabled={!selectedIds.size}
+              onClick={actions.onBatchTag}
+            >
+              <Tag size={12} /> Etiquetar
+            </button>
+            <button
+              type="button"
+              className="btn h-7 justify-center gap-1 px-1 text-[10px] text-[var(--accent-2)]"
+              disabled={!selectedIds.size}
+              onClick={actions.onBatchDelete}
+            >
+              <Trash2 size={12} /> Borrar
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {menu ? (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          entries={menu.note ? noteEntries(menu.note) : folderEntries(menu.folder ?? "")}
+          onClose={() => setMenu(null)}
+        />
+      ) : null}
     </div>
   );
 }

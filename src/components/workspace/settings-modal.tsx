@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Copy, Download, KeyRound, Loader2, RefreshCw, Trash2 } from "lucide-react";
+import { Copy, Download, KeyRound, Loader2, RefreshCw, Tag, Trash2 } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { PalettePicker } from "@/components/ui/palette-picker";
+import { vaultTemplateSettings } from "@/lib/templates";
 
 type Token = {
   id: string;
@@ -21,6 +22,8 @@ export function SettingsModal({
   vaultId,
   vaultName,
   canWrite,
+  isOwner,
+  settings,
   onChanged,
 }: {
   open: boolean;
@@ -28,6 +31,8 @@ export function SettingsModal({
   vaultId: string;
   vaultName: string;
   canWrite: boolean;
+  isOwner: boolean;
+  settings: Record<string, unknown>;
   onChanged: () => void;
 }) {
   const [tokens, setTokens] = useState<Token[]>([]);
@@ -36,7 +41,54 @@ export function SettingsModal({
   const [loading, setLoading] = useState(false);
   const [indexStatus, setIndexStatus] = useState("");
   const [trash, setTrash] = useState<Array<{ id: string; path: string }>>([]);
+  const [tags, setTags] = useState<Array<{ name: string; count: number }>>([]);
+  const [templatesFolder, setTemplatesFolder] = useState("Plantillas");
+  const [dailyFolder, setDailyFolder] = useState("Diario");
+  const [dailyTemplate, setDailyTemplate] = useState("Plantillas/Diario.md");
+  const [settingsStatus, setSettingsStatus] = useState("");
+  const [vaultShares, setVaultShares] = useState<
+    Array<{ id: string; url: string; expiresAt: string | null }>
+  >([]);
+  const [backupList, setBackupList] = useState<
+    Array<{ id: string; blobUrl: string; size: number; noteCount: number; kind: string; createdAt: string }>
+  >([]);
+  const [blobEnabled, setBlobEnabled] = useState(false);
+  const [backupStatus, setBackupStatus] = useState("");
   const router = useRouter();
+
+  const loadTags = useCallback(async () => {
+    const response = await fetch(`/api/v1/vaults/${vaultId}/tags`);
+    if (!response.ok) return;
+    const data = (await response.json()) as { tags: Array<{ name: string; count: number }> };
+    setTags(data.tags ?? []);
+  }, [vaultId]);
+
+  const loadVaultShares = useCallback(async () => {
+    const response = await fetch(`/api/v1/vaults/${vaultId}/shares`);
+    if (!response.ok) return;
+    const data = (await response.json()) as {
+      shares: Array<{ id: string; url: string; expiresAt: string | null; revokedAt: string | null }>;
+    };
+    setVaultShares((data.shares ?? []).filter((share) => !share.revokedAt));
+  }, [vaultId]);
+
+  const loadBackups = useCallback(async () => {
+    const response = await fetch(`/api/v1/vaults/${vaultId}/backups`);
+    if (!response.ok) return;
+    const data = (await response.json()) as {
+      backups: Array<{
+        id: string;
+        blobUrl: string;
+        size: number;
+        noteCount: number;
+        kind: string;
+        createdAt: string;
+      }>;
+      blob: boolean;
+    };
+    setBackupList(data.backups ?? []);
+    setBlobEnabled(Boolean(data.blob));
+  }, [vaultId]);
 
   const loadTrash = useCallback(async () => {
     const response = await fetch(`/api/v1/vaults/${vaultId}/notes?trash=1`);
@@ -50,7 +102,19 @@ export function SettingsModal({
     void loadTokens();
     // eslint-disable-next-line react-hooks/set-state-in-effect -- carga la papelera al abrir el modal
     void loadTrash();
-  }, [open, loadTrash]);
+    void loadTags();
+    void loadVaultShares();
+    void loadBackups();
+  }, [open, loadTrash, loadTags, loadVaultShares, loadBackups]);
+
+  useEffect(() => {
+    if (!open) return;
+    const templates = vaultTemplateSettings(settings);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- inicializa los ajustes al abrir
+    setTemplatesFolder(templates.templatesFolder);
+    setDailyFolder(templates.dailyFolder);
+    setDailyTemplate(templates.dailyTemplate);
+  }, [open, settings]);
 
   async function restoreNote(noteId: string) {
     await fetch(`/api/v1/vaults/${vaultId}/notes/${noteId}?restore=1`, { method: "DELETE" });
@@ -97,6 +161,92 @@ export function SettingsModal({
     onChanged();
   }
 
+  async function renameTag(from: string) {
+    const to = window.prompt(`Nuevo nombre para #${from} (si ya existe, se fusionan)`, from);
+    if (!to || to === from) return;
+    const response = await fetch(`/api/v1/vaults/${vaultId}/tags`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "rename", from, to }),
+    });
+    if (!response.ok) return;
+    await loadTags();
+    onChanged();
+  }
+
+  async function deleteTag(name: string) {
+    if (!window.confirm(`¿Eliminar #${name} de todas las notas?`)) return;
+    const response = await fetch(`/api/v1/vaults/${vaultId}/tags`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "delete", name }),
+    });
+    if (!response.ok) return;
+    await loadTags();
+    onChanged();
+  }
+
+  async function saveTemplates() {
+    setSettingsStatus("Guardando…");
+    const response = await fetch(`/api/v1/vaults/${vaultId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        settings: {
+          ...settings,
+          templatesFolder: templatesFolder.trim(),
+          dailyFolder: dailyFolder.trim(),
+          dailyTemplate: dailyTemplate.trim(),
+        },
+      }),
+    });
+    const data = (await response.json().catch(() => ({}))) as { error?: string };
+    if (!response.ok) {
+      setSettingsStatus(data.error ?? "No se pudieron guardar los ajustes");
+      return;
+    }
+    setSettingsStatus("Guardado.");
+    onChanged();
+    router.refresh();
+  }
+
+  async function createVaultShare() {
+    const response = await fetch(`/api/v1/vaults/${vaultId}/shares`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    const data = (await response.json().catch(() => ({}))) as {
+      share?: { url: string };
+      error?: string;
+    };
+    if (!response.ok || !data.share) {
+      setSettingsStatus(data.error ?? "No se pudo crear el enlace");
+      return;
+    }
+    await navigator.clipboard.writeText(data.share.url).catch(() => undefined);
+    setSettingsStatus("Enlace de bóveda creado y copiado.");
+    await loadVaultShares();
+  }
+
+  async function revokeVaultShare(id: string) {
+    await fetch(`/api/v1/vaults/${vaultId}/shares?id=${id}`, { method: "DELETE" });
+    await loadVaultShares();
+  }
+
+  async function createBackupNow() {
+    setBackupStatus("Creando backup…");
+    const response = await fetch(`/api/v1/vaults/${vaultId}/backups`, { method: "POST" });
+    const data = (await response.json().catch(() => ({}))) as { error?: string };
+    setBackupStatus(response.ok ? "Backup creado." : (data.error ?? "No se pudo crear el backup"));
+    await loadBackups();
+  }
+
+  async function removeBackup(id: string) {
+    await fetch(`/api/v1/vaults/${vaultId}/backups?id=${id}`, { method: "DELETE" });
+    await loadBackups();
+  }
+
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
     router.push("/");
@@ -133,6 +283,179 @@ export function SettingsModal({
             ) : null}
           </div>
           {indexStatus ? <p className="mt-2 text-[11px] text-[var(--muted)]">{indexStatus}</p> : null}
+        </section>
+
+        <section>
+          <h3 className="text-sm font-medium">Copias de seguridad</h3>
+          <p className="mt-1 text-[11px] leading-5 text-[var(--muted)]">
+            ZIP completo de la bóveda. El cron diario conserva las 7 últimas copias cuando Vercel
+            Blob está configurado.
+          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              className="btn h-8 text-xs"
+              onClick={() => void createBackupNow()}
+            >
+              Crear backup ahora
+            </button>
+            <a href={`/api/v1/vaults/${vaultId}/export`} className="btn h-8 text-xs">
+              <Download size={13} /> Descargar ZIP
+            </a>
+            {backupStatus ? (
+              <span className="text-[10px] text-[var(--muted)]">{backupStatus}</span>
+            ) : null}
+          </div>
+          {!blobEnabled ? (
+            <p className="mt-2 text-[10px] leading-4 text-[var(--muted)]">
+              Vercel Blob no está configurado: las copias se guardan en Postgres (máximo 25 MB por
+              ZIP).
+            </p>
+          ) : null}
+          {backupList.length ? (
+            <div className="mt-2 divide-y divide-[var(--border-soft)] rounded-lg border border-[var(--border)]">
+              {backupList.map((backup) => (
+                <div key={backup.id} className="flex items-center gap-2 px-3 py-2 text-[11px]">
+                  <a
+                    href={backup.blobUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="min-w-0 flex-1 truncate text-[var(--accent-2)]"
+                  >
+                    {new Date(backup.createdAt).toLocaleString("es-ES")} · {backup.noteCount} notas ·{" "}
+                    {(backup.size / 1024).toFixed(0)} kB
+                  </a>
+                  <span className="text-[9px] text-[var(--muted)]">{backup.kind}</span>
+                  <button
+                    type="button"
+                    className="btn btn-ghost h-7 w-7 p-0 text-[var(--accent-2)]"
+                    onClick={() => void removeBackup(backup.id)}
+                    title="Eliminar copia"
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </section>
+
+        <section>
+          <h3 className="text-sm font-medium">Compartir bóveda</h3>
+          <p className="mt-1 text-[11px] leading-5 text-[var(--muted)]">
+            Enlace público de solo lectura con índice de notas. No permite editar ni ver la papelera.
+          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <button type="button" className="btn h-8 text-xs" onClick={() => void createVaultShare()}>
+              Crear enlace de bóveda
+            </button>
+            {vaultShares.length ? (
+              <span className="text-[10px] text-[var(--muted)]">
+                {vaultShares.length} enlace(s) activo(s)
+              </span>
+            ) : null}
+          </div>
+          {vaultShares.length ? (
+            <div className="mt-2 divide-y divide-[var(--border-soft)] rounded-lg border border-[var(--border)]">
+              {vaultShares.map((share) => (
+                <div key={share.id} className="flex items-center gap-2 px-3 py-2 text-[11px]">
+                  <span className="min-w-0 flex-1 truncate">{share.url}</span>
+                  <button
+                    type="button"
+                    className="btn btn-ghost h-7 text-[10px] text-[var(--accent-2)]"
+                    onClick={() => void revokeVaultShare(share.id)}
+                  >
+                    Revocar
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </section>
+
+        {isOwner ? (
+          <section>
+            <h3 className="text-sm font-medium">Plantillas y nota diaria</h3>
+            <p className="mt-1 text-[11px] leading-5 text-[var(--muted)]">
+              Variables disponibles: <code>{"{{title}}"}</code>, <code>{"{{date}}"}</code>,{" "}
+              <code>{"{{time}}"}</code> y formatos como <code>{"{{date:YYYY-MM-DD}}"}</code>.
+            </p>
+            <div className="mt-3 grid gap-2 sm:grid-cols-3">
+              <label className="text-[11px] text-[var(--muted)]">
+                Carpeta de plantillas
+                <input
+                  className="input mt-1 h-8 text-xs"
+                  value={templatesFolder}
+                  onChange={(event) => setTemplatesFolder(event.target.value)}
+                  placeholder="Plantillas"
+                />
+              </label>
+              <label className="text-[11px] text-[var(--muted)]">
+                Carpeta de notas diarias
+                <input
+                  className="input mt-1 h-8 text-xs"
+                  value={dailyFolder}
+                  onChange={(event) => setDailyFolder(event.target.value)}
+                  placeholder="Diario"
+                />
+              </label>
+              <label className="text-[11px] text-[var(--muted)]">
+                Plantilla diaria
+                <input
+                  className="input mt-1 h-8 text-xs"
+                  value={dailyTemplate}
+                  onChange={(event) => setDailyTemplate(event.target.value)}
+                  placeholder="Plantillas/Diario.md"
+                />
+              </label>
+            </div>
+            <div className="mt-2 flex items-center gap-2">
+              <button type="button" className="btn h-8 text-xs" onClick={() => void saveTemplates()}>
+                Guardar ajustes
+              </button>
+              {settingsStatus ? (
+                <span className="text-[10px] text-[var(--muted)]">{settingsStatus}</span>
+              ) : null}
+            </div>
+          </section>
+        ) : null}
+
+        <section>
+          <h3 className="flex items-center gap-2 text-sm font-medium">
+            <Tag size={15} /> Etiquetas
+          </h3>
+          <p className="mt-1 text-[11px] leading-5 text-[var(--muted)]">
+            Renombrar también fusiona etiquetas duplicadas. Los cambios se aplican al frontmatter y
+            al texto de todas las notas.
+          </p>
+          <div className="mt-2 divide-y divide-[var(--border-soft)] rounded-lg border border-[var(--border)]">
+            {tags.length === 0 ? (
+              <p className="p-3 text-xs text-[var(--muted)]">Sin etiquetas todavía.</p>
+            ) : (
+              tags.map((tag) => (
+                <div key={tag.name} className="flex items-center gap-2 px-3 py-2 text-xs">
+                  <span className="min-w-0 flex-1 truncate">
+                    #{tag.name} <span className="text-[10px] text-[var(--muted)]">{tag.count}</span>
+                  </span>
+                  <button
+                    type="button"
+                    className="btn h-7 text-[11px]"
+                    onClick={() => void renameTag(tag.name)}
+                  >
+                    Renombrar
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-ghost h-7 w-7 p-0 text-[var(--accent-2)]"
+                    title="Eliminar etiqueta"
+                    onClick={() => void deleteTag(tag.name)}
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
         </section>
 
         <section>

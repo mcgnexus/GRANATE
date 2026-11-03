@@ -1,8 +1,9 @@
-import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, notExists, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   folders,
   links,
+  noteOpens,
   noteTags,
   notes,
   noteVersions,
@@ -10,9 +11,12 @@ import {
   type Note,
 } from "@/lib/db/schema";
 import { contentHash } from "@/lib/auth/password";
+import { ApiError } from "@/lib/auth/api";
 import { countWords, normalizeVaultPath, titleFromPath } from "@/lib/utils";
 import {
   collectTags,
+  getFrontmatterTags,
+  normalizeTag,
   parseFrontmatter,
   serializeFrontmatter,
   type Frontmatter,
@@ -25,6 +29,7 @@ export type NoteSummary = {
   title: string;
   updatedAt: Date;
   wordCount: number;
+  pinnedAt?: Date | null;
 };
 
 export type NoteDetail = Note & {
@@ -46,6 +51,7 @@ export async function listNotes(vaultId: string, includeDeleted = false): Promis
       title: notes.title,
       updatedAt: notes.updatedAt,
       wordCount: notes.wordCount,
+      pinnedAt: notes.pinnedAt,
     })
     .from(notes)
     .where(where)
@@ -122,15 +128,19 @@ export async function getNoteByPath(vaultId: string, path: string): Promise<Note
   return rows[0] ?? null;
 }
 
-export async function ensureFolders(vaultId: string, path: string) {
-  const parts = path.split("/").slice(0, -1);
+export async function ensureFolderHierarchy(vaultId: string, folderPath: string) {
+  const parts = folderPath.split("/").filter(Boolean);
   for (let i = 1; i <= parts.length; i++) {
-    const folderPath = parts.slice(0, i).join("/");
     await db
       .insert(folders)
-      .values({ vaultId, path: folderPath })
+      .values({ vaultId, path: parts.slice(0, i).join("/") })
       .onConflictDoNothing();
   }
+}
+
+export async function ensureFolders(vaultId: string, path: string) {
+  const parts = path.split("/").slice(0, -1);
+  if (parts.length) await ensureFolderHierarchy(vaultId, parts.join("/"));
 }
 
 export type CreateNoteInput = {
@@ -281,6 +291,129 @@ async function rewriteIncomingLinks(
   }
 }
 
+/** Renames a folder (and its subfolders) moving every note and rewriting links once. */
+export async function renameFolder(input: {
+  vaultId: string;
+  userId: string;
+  from: string;
+  to: string;
+}) {
+  const from = normalizeVaultPath(input.from);
+  const to = normalizeVaultPath(input.to);
+  if (!from || !to) throw new Error("La carpeta necesita un nombre");
+  if (from.toLowerCase() === to.toLowerCase()) return { movedNotes: 0, movedFolders: 0 };
+  if (to.toLowerCase().startsWith(`${from.toLowerCase()}/`)) {
+    throw new Error("No puedes mover una carpeta dentro de sí misma");
+  }
+
+  const allFolders = await db
+    .select({ id: folders.id, path: folders.path })
+    .from(folders)
+    .where(eq(folders.vaultId, input.vaultId));
+
+  const fromLower = from.toLowerCase();
+  const affected = allFolders.filter(
+    (folder) =>
+      folder.path.toLowerCase() === fromLower ||
+      folder.path.toLowerCase().startsWith(`${fromLower}/`),
+  );
+  if (!affected.length) throw new Error("Carpeta no encontrada");
+
+  const affectedIds = new Set(affected.map((folder) => folder.id));
+  const targetFolders = affected.map((folder) => ({
+    from: folder.path,
+    to: `${to}${folder.path.slice(from.length)}`,
+  }));
+  const targetFolderNames = new Set(targetFolders.map((folder) => folder.to.toLowerCase()));
+  const folderClash = allFolders.some(
+    (folder) =>
+      !affectedIds.has(folder.id) && targetFolderNames.has(folder.path.toLowerCase()),
+  );
+  if (folderClash) throw new Error("Ya existe una carpeta en la ruta de destino");
+
+  const allNotes = await db
+    .select({ id: notes.id, path: notes.path })
+    .from(notes)
+    .where(and(eq(notes.vaultId, input.vaultId), isNull(notes.deletedAt)));
+
+  const moving = allNotes.filter((note) =>
+    note.path.toLowerCase().startsWith(`${fromLower}/`),
+  );
+  const movingIds = new Set(moving.map((note) => note.id));
+  const moves = moving.map((note) => ({
+    id: note.id,
+    oldPath: note.path,
+    newPath: `${to}${note.path.slice(from.length)}`,
+  }));
+  const targetNoteNames = new Set(moves.map((move) => move.newPath.toLowerCase()));
+  const noteClash = allNotes.some(
+    (note) => !movingIds.has(note.id) && targetNoteNames.has(note.path.toLowerCase()),
+  );
+  if (noteClash) throw new Error("Ya existe una nota en la ruta de destino");
+
+  if (affected.length) {
+    await db.delete(folders).where(inArray(folders.id, Array.from(affectedIds)));
+  }
+  for (const folder of targetFolders) {
+    await ensureFolderHierarchy(input.vaultId, folder.to);
+  }
+
+  for (const move of moves) {
+    await db
+      .update(notes)
+      .set({
+        path: move.newPath,
+        title: titleFromPath(move.newPath),
+        updatedAt: new Date(),
+        mtime: new Date(),
+        updatedBy: input.userId,
+      })
+      .where(eq(notes.id, move.id));
+  }
+
+  if (moves.length) {
+    const all = await db
+      .select({
+        id: notes.id,
+        path: notes.path,
+        content: notes.content,
+        frontmatter: notes.frontmatter,
+      })
+      .from(notes)
+      .where(and(eq(notes.vaultId, input.vaultId), isNull(notes.deletedAt)));
+
+    const resolvable = buildAliasMap(all);
+    for (const move of moves) {
+      resolvable.push({ id: move.id, path: move.oldPath, aliases: [] });
+    }
+    const { rewriteLinks } = await import("@/lib/markdown/links");
+    const touched = new Set(moves.map((move) => move.id));
+
+    for (const note of all) {
+      let nextContent = note.content;
+      for (const move of moves) {
+        nextContent = rewriteLinks(nextContent, move.oldPath, move.newPath, resolvable);
+      }
+      if (nextContent === note.content) continue;
+      await db
+        .update(notes)
+        .set({
+          content: nextContent,
+          contentHash: contentHash(nextContent),
+          updatedAt: new Date(),
+        })
+        .where(eq(notes.id, note.id));
+      touched.add(note.id);
+    }
+
+    for (const noteId of touched) {
+      await syncNoteDerived(noteId);
+    }
+  }
+
+  return { movedNotes: moves.length, movedFolders: affected.length };
+}
+
 export async function deleteNote(vaultId: string, noteId: string) {
   await db
     .update(notes)
@@ -303,7 +436,8 @@ export async function getTrash(vaultId: string) {
     .orderBy(desc(notes.deletedAt));
 }
 
-export async function getVersions(noteId: string) {
+export async function getVersions(vaultId: string, noteId: string) {
+  await assertNoteInVault(vaultId, noteId);
   return db
     .select({
       id: noteVersions.id,
@@ -317,7 +451,38 @@ export async function getVersions(noteId: string) {
     .limit(50);
 }
 
-export async function restoreVersion(noteId: string, versionId: string, userId: string) {
+export async function getVersion(vaultId: string, noteId: string, versionId: string) {
+  await assertNoteInVault(vaultId, noteId);
+  const [row] = await db
+    .select({
+      id: noteVersions.id,
+      source: noteVersions.source,
+      createdAt: noteVersions.createdAt,
+      content: noteVersions.content,
+      frontmatter: noteVersions.frontmatter,
+    })
+    .from(noteVersions)
+    .where(and(eq(noteVersions.id, versionId), eq(noteVersions.noteId, noteId)))
+    .limit(1);
+  return row ?? null;
+}
+
+async function assertNoteInVault(vaultId: string, noteId: string) {
+  const [note] = await db
+    .select({ id: notes.id })
+    .from(notes)
+    .where(and(eq(notes.vaultId, vaultId), eq(notes.id, noteId)))
+    .limit(1);
+  if (!note) throw new ApiError("Nota no encontrada", 404);
+}
+
+export async function restoreVersion(
+  vaultId: string,
+  noteId: string,
+  versionId: string,
+  userId: string,
+) {
+  await assertNoteInVault(vaultId, noteId);
   const [version] = await db
     .select()
     .from(noteVersions)
@@ -328,12 +493,366 @@ export async function restoreVersion(noteId: string, versionId: string, userId: 
   if (!note) throw new Error("Nota no encontrada");
 
   await updateNote({
-    vaultId: note.vaultId,
+    vaultId,
     noteId,
     userId,
     content: version.content,
     source: "restore",
   });
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** Replaces/removes inline #tags outside fenced code and inline code. */
+function changeInlineTag(body: string, tag: string, next: string | null) {
+  const hashTag = `#${escapeRegExp(tag)}`;
+  const re = new RegExp(`(^|[\\s(\\[])${hashTag}(?![\\p{L}\\p{N}_/-])`, "gu");
+  return body
+    .split(/(```[\s\S]*?```|`[^`\n]*`)/g)
+    .map((part, index) =>
+      index % 2 === 1 ? part : part.replace(re, next ? `$1#${next}` : "$1"),
+    )
+    .join("");
+}
+
+function withTagChange(
+  content: string,
+  tag: string,
+  mode: "add" | "remove" | "rename",
+  nextTag?: string,
+) {
+  const clean = normalizeTag(tag);
+  if (!clean) return content;
+  const parsed = parseFrontmatter(content);
+  const current = getFrontmatterTags(parsed.frontmatter);
+  const lower = clean.toLowerCase();
+  const nextLower = nextTag?.toLowerCase();
+  let tags = current.filter((item) => item.toLowerCase() !== lower);
+
+  if (mode === "add") {
+    if (!current.some((item) => item.toLowerCase() === lower)) tags.push(clean);
+  } else if (mode === "rename" && nextTag) {
+    const already = tags.some((item) => item.toLowerCase() === nextLower);
+    if (!already) tags.push(nextTag);
+  }
+
+  tags = Array.from(
+    new Map(tags.map((item) => [item.toLowerCase(), item])).values(),
+  );
+  let body = parsed.body;
+  if (mode !== "add" && mode !== "remove") {
+    body = changeInlineTag(body, clean, nextTag ?? null);
+  } else if (mode === "remove") {
+    body = changeInlineTag(body, clean, null);
+  }
+
+  const frontmatter: Frontmatter = { ...parsed.frontmatter };
+  delete frontmatter.tag;
+  if (tags.length) frontmatter.tags = tags;
+  else delete frontmatter.tags;
+
+  return serializeFrontmatter(frontmatter, body);
+}
+
+export async function addTagToNote(input: {
+  vaultId: string;
+  noteId: string;
+  userId: string;
+  tag: string;
+  remove?: boolean;
+}) {
+  const note = await getNote(input.vaultId, input.noteId);
+  if (!note) throw new Error("Nota no encontrada");
+  const next = withTagChange(note.content, input.tag, input.remove ? "remove" : "add");
+  if (next === note.content) return note;
+  return updateNote({
+    vaultId: input.vaultId,
+    noteId: input.noteId,
+    userId: input.userId,
+    content: next,
+    source: "api",
+  });
+}
+
+export async function renameTag(input: {
+  vaultId: string;
+  userId: string;
+  from: string;
+  to: string;
+}) {
+  const from = normalizeTag(input.from);
+  const to = normalizeTag(input.to);
+  if (!from || !to) throw new Error("Etiqueta no válida");
+  const rows = await db
+    .select({ noteId: noteTags.noteId })
+    .from(noteTags)
+    .innerJoin(tags, eq(noteTags.tagId, tags.id))
+    .where(
+      and(
+        eq(tags.vaultId, input.vaultId),
+        sql`lower(${tags.name}) = ${from.toLowerCase()}`,
+      ),
+    );
+  const noteIds = Array.from(new Set(rows.map((row) => row.noteId)));
+  let updated = 0;
+  for (const noteId of noteIds) {
+    const note = await getNote(input.vaultId, noteId);
+    if (!note) continue;
+    const next = withTagChange(
+      note.content,
+      from,
+      from.toLowerCase() === to.toLowerCase() ? "rename" : "rename",
+      to,
+    );
+    if (next === note.content) continue;
+    await updateNote({
+      vaultId: input.vaultId,
+      noteId,
+      userId: input.userId,
+      content: next,
+      source: "api",
+    });
+    updated++;
+  }
+  if (from.toLowerCase() !== to.toLowerCase()) {
+    await db
+      .delete(tags)
+      .where(
+        and(
+          eq(tags.vaultId, input.vaultId),
+          sql`lower(${tags.name}) = ${from.toLowerCase()}`,
+        ),
+      );
+  }
+  return { updated };
+}
+
+export async function deleteTag(input: {
+  vaultId: string;
+  userId: string;
+  name: string;
+}) {
+  const name = normalizeTag(input.name);
+  if (!name) throw new Error("Etiqueta no válida");
+  const rows = await db
+    .select({ noteId: noteTags.noteId })
+    .from(noteTags)
+    .innerJoin(tags, eq(noteTags.tagId, tags.id))
+    .where(
+      and(
+        eq(tags.vaultId, input.vaultId),
+        sql`lower(${tags.name}) = ${name.toLowerCase()}`,
+      ),
+    );
+  let updated = 0;
+  for (const noteId of Array.from(new Set(rows.map((row) => row.noteId)))) {
+    const note = await getNote(input.vaultId, noteId);
+    if (!note) continue;
+    const next = withTagChange(note.content, name, "remove");
+    if (next === note.content) continue;
+    await updateNote({
+      vaultId: input.vaultId,
+      noteId,
+      userId: input.userId,
+      content: next,
+      source: "api",
+    });
+    updated++;
+  }
+  await db
+    .delete(tags)
+    .where(
+      and(
+        eq(tags.vaultId, input.vaultId),
+        sql`lower(${tags.name}) = ${name.toLowerCase()}`,
+      ),
+    );
+  return { updated };
+}
+
+export type BatchAction = "move" | "tag" | "untag" | "delete" | "pin" | "unpin";
+
+export async function batchNotes(input: {
+  vaultId: string;
+  userId: string;
+  ids: string[];
+  action: BatchAction;
+  folder?: string;
+  tag?: string;
+}) {
+  const ids = Array.from(new Set(input.ids)).slice(0, 250);
+  const rows = await db
+    .select({ id: notes.id, path: notes.path })
+    .from(notes)
+    .where(
+      and(
+        eq(notes.vaultId, input.vaultId),
+        inArray(notes.id, ids.length ? ids : ["00000000-0000-0000-0000-000000000000"]),
+        isNull(notes.deletedAt),
+      ),
+    );
+  const results: Array<{ id: string; ok: boolean; error?: string }> = [];
+  const folder = normalizeVaultPath(input.folder ?? "");
+
+  for (const note of rows) {
+    try {
+      if (input.action === "move") {
+        const filename = note.path.split("/").pop();
+        if (!filename) throw new Error("Ruta no válida");
+        const nextPath = folder ? `${folder}/${filename}` : filename;
+        if (nextPath.toLowerCase() !== note.path.toLowerCase()) {
+          await updateNote({
+            vaultId: input.vaultId,
+            noteId: note.id,
+            userId: input.userId,
+            path: nextPath,
+            source: "api",
+          });
+        }
+      } else if (input.action === "tag" || input.action === "untag") {
+        if (!input.tag?.trim()) throw new Error("Falta la etiqueta");
+        await addTagToNote({
+          vaultId: input.vaultId,
+          noteId: note.id,
+          userId: input.userId,
+          tag: input.tag,
+          remove: input.action === "untag",
+        });
+      } else if (input.action === "delete") {
+        await deleteNote(input.vaultId, note.id);
+      } else if (input.action === "pin" || input.action === "unpin") {
+        await db
+          .update(notes)
+          .set({
+            pinnedAt: input.action === "pin" ? new Date() : null,
+            updatedAt: new Date(),
+          })
+          .where(eq(notes.id, note.id));
+      }
+      results.push({ id: note.id, ok: true });
+    } catch (error) {
+      results.push({
+        id: note.id,
+        ok: false,
+        error: error instanceof Error ? error.message : "Error",
+      });
+    }
+  }
+
+  return {
+    results,
+    updated: results.filter((result) => result.ok).length,
+    failed: results.filter((result) => !result.ok).length,
+  };
+}
+
+export async function setNotePinned(
+  vaultId: string,
+  noteId: string,
+  pinned: boolean,
+) {
+  await db
+    .update(notes)
+    .set({ pinnedAt: pinned ? new Date() : null, updatedAt: new Date() })
+    .where(and(eq(notes.vaultId, vaultId), eq(notes.id, noteId)));
+}
+
+export async function trackNoteOpen(userId: string, vaultId: string, noteId: string) {
+  const [note] = await db
+    .select({ id: notes.id })
+    .from(notes)
+    .where(and(eq(notes.vaultId, vaultId), eq(notes.id, noteId), isNull(notes.deletedAt)))
+    .limit(1);
+  if (!note) return;
+  await db
+    .insert(noteOpens)
+    .values({ userId, noteId })
+    .onConflictDoUpdate({
+      target: [noteOpens.userId, noteOpens.noteId],
+      set: {
+        openCount: sql`${noteOpens.openCount} + 1`,
+        lastOpenedAt: new Date(),
+      },
+    });
+}
+
+export type SmartViews = {
+  favorites: NoteSummary[];
+  recents: NoteSummary[];
+  orphans: NoteSummary[];
+  untagged: NoteSummary[];
+};
+
+export async function listSmartViews(
+  vaultId: string,
+  userId: string,
+): Promise<SmartViews> {
+  const alive = and(eq(notes.vaultId, vaultId), isNull(notes.deletedAt));
+  const summary = {
+    id: notes.id,
+    path: notes.path,
+    title: notes.title,
+    updatedAt: notes.updatedAt,
+    wordCount: notes.wordCount,
+  };
+
+  const [favorites, recents, orphans, untagged] = await Promise.all([
+    db
+      .select(summary)
+      .from(notes)
+      .where(and(alive, sql`${notes.pinnedAt} is not null`))
+      .orderBy(desc(notes.pinnedAt))
+      .limit(50),
+    db
+      .select(summary)
+      .from(noteOpens)
+      .innerJoin(notes, eq(noteOpens.noteId, notes.id))
+      .where(
+        and(
+          eq(noteOpens.userId, userId),
+          eq(notes.vaultId, vaultId),
+          isNull(notes.deletedAt),
+        ),
+      )
+      .orderBy(desc(noteOpens.lastOpenedAt))
+      .limit(20),
+    db
+      .select(summary)
+      .from(notes)
+      .where(
+        and(
+          alive,
+          notExists(
+            db
+              .select({ id: links.id })
+              .from(links)
+              .where(or(eq(links.sourceNoteId, notes.id), eq(links.targetNoteId, notes.id))),
+          ),
+        ),
+      )
+      .orderBy(asc(notes.path))
+      .limit(200),
+    db
+      .select(summary)
+      .from(notes)
+      .where(
+        and(
+          alive,
+          notExists(
+            db
+              .select({ noteId: noteTags.noteId })
+              .from(noteTags)
+              .where(eq(noteTags.noteId, notes.id)),
+          ),
+        ),
+      )
+      .orderBy(asc(notes.path))
+      .limit(200),
+  ]);
+
+  return { favorites, recents, orphans, untagged };
 }
 
 /** Rebuilds links and tags for a note. Called after every save. */
@@ -404,11 +923,14 @@ export async function listTags(vaultId: string) {
     .orderBy(desc(sql`count(${noteTags.noteId})`));
 }
 
-export async function buildTree(vaultId: string) {
-  const [noteRows, folderRows, tagRows] = await Promise.all([
+export async function buildTree(vaultId: string, userId?: string) {
+  const [noteRows, folderRows, tagRows, views] = await Promise.all([
     listNotes(vaultId),
     listFolders(vaultId),
     listTags(vaultId),
+    userId
+      ? listSmartViews(vaultId, userId)
+      : Promise.resolve({ favorites: [], recents: [], orphans: [], untagged: [] }),
   ]);
 
   const folderSet = new Set<string>(folderRows.map((folder) => folder.path));
@@ -421,6 +943,7 @@ export async function buildTree(vaultId: string) {
     notes: noteRows,
     folders: Array.from(folderSet).sort((a, b) => a.localeCompare(b, "es")),
     tags: tagRows,
+    views,
   };
 }
 

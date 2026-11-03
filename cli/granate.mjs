@@ -1,7 +1,8 @@
 #!/usr/bin/env node
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { readFile, writeFile, mkdir, readdir } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, relative, sep } from "node:path";
 
 const CONFIG_DIR = join(homedir(), ".granate");
 const CONFIG_FILE = join(CONFIG_DIR, "config.json");
@@ -19,6 +20,7 @@ Uso:
   granate ask <pregunta> [--vault <id>]
   granate export <salida.zip> [--vault <id>]
   granate import <boveda.zip> [--vault <id>]
+  granate sync <carpeta> [--vault <id>] [--dry-run] [--pull-only|--push-only]
 
 El token se crea en Ajustes → Tokens de API.
 `;
@@ -252,7 +254,228 @@ const commands = {
     const data = await response.json();
     console.log(`✔ Importadas ${data.report?.notes ?? 0} notas.`);
   },
+
+  async sync({ config, options, positional }) {
+    const folder = positional[0];
+    if (!folder) fail("Uso: granate sync <carpeta> [--vault <id>] [--dry-run]");
+    const vaultId = await resolveVault(config, options.vault);
+    const manifestPath = join(folder, ".granate-sync.json");
+    let manifest = { lastSync: null, files: {} };
+    try {
+      manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+    } catch {
+      // first sync
+    }
+    manifest.files ??= {};
+
+    const treeResponse = await request(config, `/api/v1/vaults/${vaultId}/tree`);
+    const tree = await treeResponse.json();
+    const remoteByPath = new Map(
+      tree.notes.map((note) => [note.path.toLowerCase(), note]),
+    );
+
+    const localFiles = await walkMarkdown(folder);
+    const localMap = new Map(
+      localFiles.map((file) => [file.path.toLowerCase(), file]),
+    );
+    const dryRun = Boolean(options["dry-run"]);
+    const pullOnly = Boolean(options["pull-only"]);
+    const pushOnly = Boolean(options["push-only"]);
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const summary = { pulled: 0, pushed: 0, conflicts: 0, skipped: 0, unchanged: 0 };
+
+    async function getRemote(path) {
+      const response = await fetch(
+        `${config.url}/api/v1/vaults/${vaultId}/notes?path=${encodeURIComponent(path)}`,
+        { headers: { Authorization: `Bearer ${config.token}` } },
+      );
+      if (response.status === 404) return null;
+      if (!response.ok) throw new Error(`No se pudo leer ${path}`);
+      return (await response.json()).note;
+    }
+
+    for (const local of localFiles) {
+      const remote = remoteByPath.get(local.path.toLowerCase());
+      const entry = manifest.files[local.path];
+      const localChanged = !entry || entry.localHash !== local.hash;
+      const remoteChanged =
+        !remote ||
+        !entry ||
+        entry.remoteHash !== remote.contentHash ||
+        (entry.remoteUpdatedAt && entry.remoteUpdatedAt !== remote.updatedAt);
+      const path = local.path;
+
+      if (!remote) {
+        if (pushOnly || !pullOnly) {
+          summary.pushed++;
+          if (dryRun) {
+            console.log(`↑ crear ${path}`);
+          } else {
+            const created = await request(config, `/api/v1/vaults/${vaultId}/notes`, {
+              method: "POST",
+              body: JSON.stringify({ path, content: local.content }),
+            }).then((response) => response.json());
+            manifest.files[path] = {
+              localHash: local.hash,
+              remoteHash: created.note?.contentHash ?? "",
+              remoteUpdatedAt: created.note?.updatedAt,
+              syncedAt: new Date().toISOString(),
+            };
+            console.log(`↑ creada ${path}`);
+          }
+        }
+        continue;
+      }
+
+      const same = remote.contentHash === local.hash;
+      if (same) {
+        summary.unchanged++;
+        manifest.files[path] = {
+          localHash: local.hash,
+          remoteHash: remote.contentHash,
+          remoteUpdatedAt: remote.updatedAt,
+          syncedAt: new Date().toISOString(),
+        };
+        continue;
+      }
+
+      if (localChanged && !remoteChanged) {
+        if (pullOnly) {
+          summary.skipped++;
+          continue;
+        }
+        summary.pushed++;
+        if (dryRun) console.log(`↑ actualizar ${path}`);
+        else {
+          const response = await request(config, `/api/v1/vaults/${vaultId}/notes/${remote.id}`, {
+            method: "PATCH",
+            body: JSON.stringify({ content: local.content }),
+          });
+          const updated = (await response.json()).note;
+          manifest.files[path] = {
+            localHash: local.hash,
+            remoteHash: updated.contentHash,
+            remoteUpdatedAt: updated.updatedAt,
+            syncedAt: new Date().toISOString(),
+          };
+          console.log(`↑ actualizada ${path}`);
+        }
+      } else if (!localChanged && remoteChanged) {
+        if (pushOnly) {
+          summary.skipped++;
+          continue;
+        }
+        summary.pulled++;
+        if (dryRun) console.log(`↓ actualizar ${path}`);
+        else {
+          const detail = await getRemote(path);
+          if (detail) {
+            await writeLocal(folder, path, detail.content);
+            manifest.files[path] = {
+              localHash: sha256(detail.content),
+              remoteHash: detail.contentHash,
+              remoteUpdatedAt: detail.updatedAt,
+              syncedAt: new Date().toISOString(),
+            };
+            console.log(`↓ actualizada ${path}`);
+          }
+        }
+      } else {
+        // Both sides changed. Keep local work in a conflict copy and take remote.
+        summary.conflicts++;
+        if (dryRun) {
+          console.log(`⚠ conflicto ${path}`);
+          continue;
+        }
+        const conflictPath = path.replace(/\.md$/i, `.conflicto-local-${stamp}.md`);
+        await writeLocal(folder, conflictPath, local.content);
+        const detail = await getRemote(path);
+        if (detail) {
+          await writeLocal(folder, path, detail.content);
+          manifest.files[path] = {
+            localHash: sha256(detail.content),
+            remoteHash: detail.contentHash,
+            remoteUpdatedAt: detail.updatedAt,
+            syncedAt: new Date().toISOString(),
+          };
+        }
+        console.log(`⚠ conflicto en ${path} → copia local ${conflictPath}`);
+      }
+    }
+
+    // Pull notes that exist only remotely and were never seen by this folder.
+    if (!pushOnly) {
+      for (const remote of tree.notes) {
+        const key = remote.path.toLowerCase();
+        if (localMap.has(key) || manifest.files[remote.path]) continue;
+        summary.pulled++;
+        if (dryRun) {
+          console.log(`↓ nuevo ${remote.path}`);
+          continue;
+        }
+        const detail = await getRemote(remote.path);
+        if (!detail) continue;
+        await writeLocal(folder, remote.path, detail.content);
+        manifest.files[remote.path] = {
+          localHash: sha256(detail.content),
+          remoteHash: detail.contentHash,
+          remoteUpdatedAt: detail.updatedAt,
+          syncedAt: new Date().toISOString(),
+        };
+        console.log(`↓ nueva ${remote.path}`);
+      }
+    }
+
+    if (!dryRun) {
+      manifest.lastSync = new Date().toISOString();
+      await writeFile(manifestPath, JSON.stringify(manifest, null, 2), "utf8");
+    }
+
+    console.log(
+      `✔ Sync ${dryRun ? "(simulación) " : ""}↑${summary.pushed} ↓${summary.pulled} ⚠${summary.conflicts} · sin cambios ${summary.unchanged}`,
+    );
+  },
 };
+
+function sha256(value) {
+  return createHash("sha256").update(value, "utf8").digest("hex");
+}
+
+async function walkMarkdown(root) {
+  const files = [];
+  async function walk(directory) {
+    let entries;
+    try {
+      entries = await readdir(directory, { withFileTypes: true });
+    } catch {
+      fail(`No existe la carpeta ${directory}`);
+    }
+    for (const entry of entries) {
+      const absolute = join(directory, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name === ".git" || entry.name === ".obsidian" || entry.name === "node_modules") {
+          continue;
+        }
+        await walk(absolute);
+      } else if (entry.isFile() && entry.name.toLowerCase().endsWith(".md")) {
+        const content = await readFile(absolute, "utf8");
+        files.push({
+          path: relative(root, absolute).split(sep).join("/"),
+          content,
+          hash: sha256(content),
+        });
+      }
+    }
+  }
+  await walk(root);
+  return files.sort((a, b) => a.path.localeCompare(b.path, "es"));
+}
+
+async function writeLocal(root, path, content) {
+  const absolute = join(root, ...path.split("/"));
+  await mkdir(dirname(absolute), { recursive: true });
+  await writeFile(absolute, content, "utf8");
+}
 
 async function readStdin() {
   if (process.stdin.isTTY) return "";

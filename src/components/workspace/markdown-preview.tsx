@@ -16,12 +16,19 @@ const schema = {
   },
 };
 
-function wikilinksToMarkdown(content: string, vaultId: string): string {
+function wikilinksToMarkdown(
+  content: string,
+  vaultId: string,
+  attachmentUrl?: (target: string) => string,
+): string {
   return content.replace(/(!)?\[\[([^\]]+?)\]\]/g, (full, embed: string | undefined, inner: string) => {
     const target = inner.split("|")[0].split("#")[0].trim();
     const alias = inner.includes("|") ? inner.split("|").slice(1).join("|") : target;
     if (embed && IMAGE_RE.test(target)) {
-      return `![${alias}](/api/v1/vaults/${vaultId}/attachments?path=${encodeURIComponent(target)})`;
+      const src =
+        attachmentUrl?.(target) ??
+        `/api/v1/vaults/${vaultId}/attachments?path=${encodeURIComponent(target)}`;
+      return `![${alias}](${src})`;
     }
     return `[${alias}](granate:${encodeURIComponent(target)})`;
   });
@@ -31,13 +38,15 @@ export function MarkdownPreview({
   content,
   vaultId,
   onOpenNote,
+  attachmentUrl,
 }: {
   content: string;
   vaultId: string;
   onOpenNote: (path: string) => void;
+  attachmentUrl?: (target: string) => string;
 }) {
   const body = content.replace(/^---[\s\S]*?---\s*/, "");
-  const markdown = wikilinksToMarkdown(body, vaultId);
+  const markdown = wikilinksToMarkdown(body, vaultId, attachmentUrl);
 
   const components: Components = {
     a: ({ href, children, className }) => {

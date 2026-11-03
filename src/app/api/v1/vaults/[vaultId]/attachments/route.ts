@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
-import { and, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
+import { del, put } from "@vercel/blob";
 import { db } from "@/lib/db";
 import { attachments } from "@/lib/db/schema";
 import { withVault, apiError } from "@/lib/http";
@@ -10,11 +11,37 @@ type Ctx = { params: Promise<{ vaultId: string }> };
 
 const MAX_BYTES = 10 * 1024 * 1024;
 
+function publicUrl(vaultId: string, row: { id: string; blobUrl: string | null }) {
+  return row.blobUrl || `/api/v1/vaults/${vaultId}/attachments?id=${row.id}`;
+}
+
 export async function GET(request: NextRequest, ctx: Ctx) {
   try {
     const { vaultId } = await ctx.params;
     const access = await withVault(request, vaultId);
     if ("response" in access) return access.response;
+
+    if (request.nextUrl.searchParams.get("list") === "1") {
+      const rows = await db
+        .select({
+          id: attachments.id,
+          path: attachments.path,
+          mime: attachments.mime,
+          size: attachments.size,
+          blobUrl: attachments.blobUrl,
+          createdAt: attachments.createdAt,
+        })
+        .from(attachments)
+        .where(eq(attachments.vaultId, vaultId))
+        .orderBy(desc(attachments.createdAt));
+      return Response.json({
+        attachments: rows.map((row) => ({
+          ...row,
+          url: publicUrl(vaultId, row),
+          storage: row.blobUrl ? "blob" : "postgres",
+        })),
+      });
+    }
 
     const path = request.nextUrl.searchParams.get("path");
     const id = request.nextUrl.searchParams.get("id");
@@ -31,7 +58,12 @@ export async function GET(request: NextRequest, ctx: Ctx) {
       )
       .limit(1);
 
-    if (!row?.data) return Response.json({ error: "Adjunto no encontrado" }, { status: 404 });
+    if (!row) return Response.json({ error: "Adjunto no encontrado" }, { status: 404 });
+
+    if (row.blobUrl) {
+      return Response.redirect(row.blobUrl, 307);
+    }
+    if (!row.data) return Response.json({ error: "Adjunto no encontrado" }, { status: 404 });
 
     const bytes = Buffer.from(row.data, "base64");
     return new Response(bytes as unknown as BodyInit, {
@@ -65,22 +97,95 @@ export async function POST(request: NextRequest, ctx: Ctx) {
     }
 
     const bytes = Buffer.from(await file.arrayBuffer());
-    const base64 = bytes.toString("base64");
-    const sha = contentHash(base64);
+    const mime = file.type || guessMime(path);
+    const sha = contentHash(bytes.toString("base64"));
+    const token = process.env.BLOB_READ_WRITE_TOKEN;
 
-    await db
-      .insert(attachments)
-      .values({
+    const [existing] = await db
+      .select({ id: attachments.id, blobUrl: attachments.blobUrl })
+      .from(attachments)
+      .where(
+        and(
+          eq(attachments.vaultId, vaultId),
+          sql`lower(${attachments.path}) = ${path.toLowerCase()}`,
+        ),
+      )
+      .limit(1);
+
+    let blobUrl: string | null = null;
+    let data: string | null = null;
+
+    if (token) {
+      const blob = await put(`vaults/${vaultId}/${path}`, bytes, {
+        access: "public",
+        addRandomSuffix: true,
+        contentType: mime,
+        token,
+      });
+      blobUrl = blob.url;
+      if (existing?.blobUrl) {
+        await del(existing.blobUrl, { token }).catch(() => undefined);
+      }
+    } else {
+      data = bytes.toString("base64");
+    }
+
+    if (existing) {
+      await db
+        .update(attachments)
+        .set({ mime, size: bytes.byteLength, sha256: sha, data, blobUrl })
+        .where(eq(attachments.id, existing.id));
+    } else {
+      await db.insert(attachments).values({
         vaultId,
         path,
-        mime: file.type || guessMime(path),
+        mime,
         size: bytes.byteLength,
         sha256: sha,
-        data: base64,
-      })
-      .onConflictDoNothing();
+        data,
+        blobUrl,
+      });
+    }
 
-    return Response.json({ ok: true, path, url: `/api/v1/vaults/${vaultId}/attachments?path=${encodeURIComponent(path)}` });
+    return Response.json({
+      ok: true,
+      path,
+      storage: token ? "blob" : "postgres",
+      url: blobUrl ?? `/api/v1/vaults/${vaultId}/attachments?path=${encodeURIComponent(path)}`,
+    });
+  } catch (error) {
+    return apiError(error);
+  }
+}
+
+export async function DELETE(request: NextRequest, ctx: Ctx) {
+  try {
+    const { vaultId } = await ctx.params;
+    const access = await withVault(request, vaultId, true);
+    if ("response" in access) return access.response;
+
+    const id = request.nextUrl.searchParams.get("id");
+    const path = request.nextUrl.searchParams.get("path");
+    if (!id && !path) return Response.json({ error: "Falta id o path" }, { status: 400 });
+
+    const [row] = await db
+      .select()
+      .from(attachments)
+      .where(
+        and(
+          eq(attachments.vaultId, vaultId),
+          id ? eq(attachments.id, id) : sql`lower(${attachments.path}) = ${(path ?? "").toLowerCase()}`,
+        ),
+      )
+      .limit(1);
+    if (!row) return Response.json({ error: "Adjunto no encontrado" }, { status: 404 });
+
+    const token = process.env.BLOB_READ_WRITE_TOKEN;
+    if (row.blobUrl && token) {
+      await del(row.blobUrl, { token }).catch(() => undefined);
+    }
+    await db.delete(attachments).where(eq(attachments.id, row.id));
+    return Response.json({ ok: true });
   } catch (error) {
     return apiError(error);
   }

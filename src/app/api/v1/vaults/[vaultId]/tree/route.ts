@@ -9,7 +9,7 @@ export async function GET(request: NextRequest, ctx: Ctx) {
     const { vaultId } = await ctx.params;
     const access = await withVault(request, vaultId);
     if ("response" in access) return access.response;
-    const tree = await buildTree(vaultId);
+    const tree = await buildTree(vaultId, access.user.id);
     return Response.json({ ...tree, vault: access.vault });
   } catch (error) {
     return apiError(error);

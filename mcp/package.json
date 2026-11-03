@@ -1,0 +1,12 @@
+{
+  "name": "granate-mcp",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "granate-mcp": "./granate-mcp.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
