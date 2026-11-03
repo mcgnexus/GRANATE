@@ -477,11 +477,11 @@ views:
           <button
             type="button"
             onClick={() => setSettingsOpen(true)}
-            className="btn btn-ghost h-8 w-8 shrink-0 p-0"
+            className="btn h-8 w-8 shrink-0 bg-[var(--panel-2)] p-0"
             title="Ajustes"
             aria-label="Ajustes"
           >
-            <Settings size={15} />
+            <Settings size={16} />
           </button>
 
           <button
