@@ -9,7 +9,7 @@ type Attachment = {
   mime: string;
   size: number;
   url: string;
-  storage: "blob" | "postgres";
+  storage: "b2" | "vercel" | "postgres";
   createdAt: string;
 };
 

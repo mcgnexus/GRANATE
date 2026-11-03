@@ -3,9 +3,9 @@ import { withVault, apiError } from "@/lib/http";
 import {
   createBackup,
   deleteBackup,
-  hasBlobStorage,
   listBackups,
 } from "@/lib/backups";
+import { storageProvider } from "@/lib/storage";
 
 type Ctx = { params: Promise<{ vaultId: string }> };
 
@@ -16,7 +16,8 @@ export async function GET(request: NextRequest, ctx: Ctx) {
     if ("response" in access) return access.response;
     return Response.json({
       backups: await listBackups(vaultId),
-      blob: hasBlobStorage(),
+      blob: storageProvider() !== "postgres",
+      storage: storageProvider(),
     });
   } catch (error) {
     return apiError(error);

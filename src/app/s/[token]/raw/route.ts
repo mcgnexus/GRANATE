@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { attachments, shareLinks } from "@/lib/db/schema";
+import { b2KeyFromRef, isB2Ref, signedB2Url } from "@/lib/storage";
 
 type Ctx = { params: Promise<{ token: string }> };
 
@@ -36,6 +37,9 @@ export async function GET(request: NextRequest, ctx: Ctx) {
     .limit(1);
 
   if (!row) return new Response("Adjunto no encontrado", { status: 404 });
+  if (isB2Ref(row.blobUrl)) {
+    return Response.redirect(await signedB2Url(b2KeyFromRef(row.blobUrl), 3600), 307);
+  }
   if (row.blobUrl) return Response.redirect(row.blobUrl, 307);
   if (!row.data) return new Response("Adjunto no encontrado", { status: 404 });
 

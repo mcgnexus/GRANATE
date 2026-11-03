@@ -3,11 +3,31 @@ import { del, put } from "@vercel/blob";
 import { db } from "@/lib/db";
 import { backups, notes } from "@/lib/db/schema";
 import { exportVaultZip } from "@/lib/exporter";
-import { ApiError } from "@/lib/auth/api";
+import { ApiError } from "@/lib/api-error";
 import { slugify } from "@/lib/utils";
+import {
+  b2KeyFromRef,
+  backupKey,
+  deleteB2,
+  isB2Ref,
+  putB2,
+  storageProvider,
+} from "@/lib/storage";
 
-export function hasBlobStorage() {
-  return Boolean(process.env.BLOB_READ_WRITE_TOKEN);
+export function hasExternalStorage() {
+  return storageProvider() !== "postgres";
+}
+
+async function removeStoredRef(ref: string | null | undefined) {
+  if (!ref) return;
+  if (isB2Ref(ref)) {
+    await deleteB2(b2KeyFromRef(ref)).catch(() => undefined);
+    return;
+  }
+  const token = process.env.BLOB_READ_WRITE_TOKEN;
+  if (token && /^https?:\/\//.test(ref)) {
+    await del(ref, { token }).catch(() => undefined);
+  }
 }
 
 export async function listBackups(vaultId: string) {
@@ -34,12 +54,21 @@ export async function createBackup(options: {
 }) {
   const bytes = await exportVaultZip(options.vaultId);
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const path = `backups/${options.vaultId}/${slugify(options.vaultName) || "boveda"}-${stamp}.zip`;
-  const token = process.env.BLOB_READ_WRITE_TOKEN;
+  const filename = `${slugify(options.vaultName) || "boveda"}-${stamp}.zip`;
+  const path = `backups/${options.vaultId}/${filename}`;
+  const provider = storageProvider();
   let blobUrl = "";
   let data: string | null = null;
 
-  if (token) {
+  if (provider === "b2") {
+    blobUrl = await putB2(
+      backupKey(options.vaultId, filename),
+      Buffer.from(bytes),
+      "application/zip",
+    );
+  } else if (provider === "vercel") {
+    const token = process.env.BLOB_READ_WRITE_TOKEN;
+    if (!token) throw new ApiError("BLOB_READ_WRITE_TOKEN no configurado", 400);
     const blob = await put(path, Buffer.from(bytes), {
       access: "public",
       addRandomSuffix: true,
@@ -50,7 +79,7 @@ export async function createBackup(options: {
   } else {
     if (bytes.byteLength > 25 * 1024 * 1024) {
       throw new ApiError(
-        "El ZIP supera 25 MB y Vercel Blob no está configurado. Exporta el ZIP manualmente.",
+        "El ZIP supera 25 MB y no hay almacenamiento externo configurado. Exporta el ZIP manualmente.",
         413,
       );
     }
@@ -75,7 +104,7 @@ export async function createBackup(options: {
     })
     .returning();
 
-  if (!token) {
+  if (provider === "postgres") {
     blobUrl = `/api/v1/vaults/${options.vaultId}/backups/download?id=${row.id}`;
     await db.update(backups).set({ blobUrl }).where(eq(backups.id, row.id));
   }
@@ -86,11 +115,10 @@ export async function createBackup(options: {
 }
 
 export async function pruneBackups(vaultId: string, keep = 7) {
-  const token = process.env.BLOB_READ_WRITE_TOKEN;
   const rows = await listBackups(vaultId);
   const stale = rows.slice(keep);
   for (const row of stale) {
-    if (token) await del(row.blobUrl, { token }).catch(() => undefined);
+    await removeStoredRef(row.blobUrl);
     await db.delete(backups).where(eq(backups.id, row.id));
   }
   return stale.length;
@@ -103,21 +131,19 @@ export async function deleteBackup(vaultId: string, id: string) {
     .where(and(eq(backups.vaultId, vaultId), eq(backups.id, id)))
     .limit(1);
   if (!row) throw new ApiError("Backup no encontrado", 404);
-  const token = process.env.BLOB_READ_WRITE_TOKEN;
-  if (token) await del(row.blobUrl, { token }).catch(() => undefined);
+  await removeStoredRef(row.blobUrl);
   await db.delete(backups).where(eq(backups.id, id));
 }
 
 /** Used by the cron endpoint to avoid unbounded history. */
 export async function pruneOlderThan(days: number) {
   const threshold = new Date(Date.now() - days * 86_400_000);
-  const token = process.env.BLOB_READ_WRITE_TOKEN;
   const stale = await db
     .select()
     .from(backups)
     .where(lt(backups.createdAt, threshold));
   for (const row of stale) {
-    if (token) await del(row.blobUrl, { token }).catch(() => undefined);
+    await removeStoredRef(row.blobUrl);
     await db.delete(backups).where(eq(backups.id, row.id));
   }
   return stale.length;

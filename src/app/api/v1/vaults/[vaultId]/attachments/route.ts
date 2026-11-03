@@ -6,13 +6,44 @@ import { attachments } from "@/lib/db/schema";
 import { withVault, apiError } from "@/lib/http";
 import { guessMime } from "@/lib/import-export";
 import { contentHash } from "@/lib/auth/password";
+import {
+  attachmentKey,
+  b2KeyFromRef,
+  deleteB2,
+  isB2Ref,
+  putB2,
+  signedB2Url,
+  storageProvider,
+} from "@/lib/storage";
 
 type Ctx = { params: Promise<{ vaultId: string }> };
 
 const MAX_BYTES = 10 * 1024 * 1024;
 
+function apiUrl(vaultId: string, row: { id: string }) {
+  return `/api/v1/vaults/${vaultId}/attachments?id=${row.id}`;
+}
+
 function publicUrl(vaultId: string, row: { id: string; blobUrl: string | null }) {
-  return row.blobUrl || `/api/v1/vaults/${vaultId}/attachments?id=${row.id}`;
+  if (!row.blobUrl || isB2Ref(row.blobUrl)) return apiUrl(vaultId, row);
+  return row.blobUrl;
+}
+
+function storageOf(blobUrl: string | null) {
+  if (!blobUrl) return "postgres";
+  return isB2Ref(blobUrl) ? "b2" : "vercel";
+}
+
+async function removeStoredRef(ref: string | null | undefined) {
+  if (!ref) return;
+  if (isB2Ref(ref)) {
+    await deleteB2(b2KeyFromRef(ref)).catch(() => undefined);
+    return;
+  }
+  const token = process.env.BLOB_READ_WRITE_TOKEN;
+  if (token && /^https?:\/\//.test(ref)) {
+    await del(ref, { token }).catch(() => undefined);
+  }
 }
 
 export async function GET(request: NextRequest, ctx: Ctx) {
@@ -38,7 +69,7 @@ export async function GET(request: NextRequest, ctx: Ctx) {
         attachments: rows.map((row) => ({
           ...row,
           url: publicUrl(vaultId, row),
-          storage: row.blobUrl ? "blob" : "postgres",
+          storage: storageOf(row.blobUrl),
         })),
       });
     }
@@ -60,6 +91,10 @@ export async function GET(request: NextRequest, ctx: Ctx) {
 
     if (!row) return Response.json({ error: "Adjunto no encontrado" }, { status: 404 });
 
+    if (isB2Ref(row.blobUrl)) {
+      const url = await signedB2Url(b2KeyFromRef(row.blobUrl), 3600);
+      return Response.redirect(url, 307);
+    }
     if (row.blobUrl) {
       return Response.redirect(row.blobUrl, 307);
     }
@@ -99,7 +134,7 @@ export async function POST(request: NextRequest, ctx: Ctx) {
     const bytes = Buffer.from(await file.arrayBuffer());
     const mime = file.type || guessMime(path);
     const sha = contentHash(bytes.toString("base64"));
-    const token = process.env.BLOB_READ_WRITE_TOKEN;
+    const provider = storageProvider();
 
     const [existing] = await db
       .select({ id: attachments.id, blobUrl: attachments.blobUrl })
@@ -115,7 +150,11 @@ export async function POST(request: NextRequest, ctx: Ctx) {
     let blobUrl: string | null = null;
     let data: string | null = null;
 
-    if (token) {
+    if (provider === "b2") {
+      blobUrl = await putB2(attachmentKey(vaultId, path), bytes, mime);
+    } else if (provider === "vercel") {
+      const token = process.env.BLOB_READ_WRITE_TOKEN;
+      if (!token) throw new Error("BLOB_READ_WRITE_TOKEN no configurado");
       const blob = await put(`vaults/${vaultId}/${path}`, bytes, {
         access: "public",
         addRandomSuffix: true,
@@ -123,9 +162,6 @@ export async function POST(request: NextRequest, ctx: Ctx) {
         token,
       });
       blobUrl = blob.url;
-      if (existing?.blobUrl) {
-        await del(existing.blobUrl, { token }).catch(() => undefined);
-      }
     } else {
       data = bytes.toString("base64");
     }
@@ -135,6 +171,9 @@ export async function POST(request: NextRequest, ctx: Ctx) {
         .update(attachments)
         .set({ mime, size: bytes.byteLength, sha256: sha, data, blobUrl })
         .where(eq(attachments.id, existing.id));
+      if (existing.blobUrl && existing.blobUrl !== blobUrl) {
+        await removeStoredRef(existing.blobUrl);
+      }
     } else {
       await db.insert(attachments).values({
         vaultId,
@@ -150,8 +189,11 @@ export async function POST(request: NextRequest, ctx: Ctx) {
     return Response.json({
       ok: true,
       path,
-      storage: token ? "blob" : "postgres",
-      url: blobUrl ?? `/api/v1/vaults/${vaultId}/attachments?path=${encodeURIComponent(path)}`,
+      storage: provider,
+      url:
+        provider === "b2"
+          ? `/api/v1/vaults/${vaultId}/attachments?path=${encodeURIComponent(path)}`
+          : blobUrl ?? `/api/v1/vaults/${vaultId}/attachments?path=${encodeURIComponent(path)}`,
     });
   } catch (error) {
     return apiError(error);
@@ -180,10 +222,7 @@ export async function DELETE(request: NextRequest, ctx: Ctx) {
       .limit(1);
     if (!row) return Response.json({ error: "Adjunto no encontrado" }, { status: 404 });
 
-    const token = process.env.BLOB_READ_WRITE_TOKEN;
-    if (row.blobUrl && token) {
-      await del(row.blobUrl, { token }).catch(() => undefined);
-    }
+    await removeStoredRef(row.blobUrl);
     await db.delete(attachments).where(eq(attachments.id, row.id));
     return Response.json({ ok: true });
   } catch (error) {

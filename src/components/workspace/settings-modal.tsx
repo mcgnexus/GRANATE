@@ -52,7 +52,9 @@ export function SettingsModal({
   const [backupList, setBackupList] = useState<
     Array<{ id: string; blobUrl: string; size: number; noteCount: number; kind: string; createdAt: string }>
   >([]);
-  const [blobEnabled, setBlobEnabled] = useState(false);
+  const [storageProvider, setStorageProvider] = useState<"b2" | "vercel" | "postgres">(
+    "postgres",
+  );
   const [backupStatus, setBackupStatus] = useState("");
   const router = useRouter();
 
@@ -85,9 +87,10 @@ export function SettingsModal({
         createdAt: string;
       }>;
       blob: boolean;
+      storage?: "b2" | "vercel" | "postgres";
     };
     setBackupList(data.backups ?? []);
-    setBlobEnabled(Boolean(data.blob));
+    setStorageProvider(data.storage ?? (data.blob ? "vercel" : "postgres"));
   }, [vaultId]);
 
   const loadTrash = useCallback(async () => {
@@ -306,12 +309,13 @@ export function SettingsModal({
               <span className="text-[10px] text-[var(--muted)]">{backupStatus}</span>
             ) : null}
           </div>
-          {!blobEnabled ? (
-            <p className="mt-2 text-[10px] leading-4 text-[var(--muted)]">
-              Vercel Blob no está configurado: las copias se guardan en Postgres (máximo 25 MB por
-              ZIP).
-            </p>
-          ) : null}
+          <p className="mt-2 text-[10px] leading-4 text-[var(--muted)]">
+            {storageProvider === "b2"
+              ? "Backups en Backblaze B2 (bucket privado; descarga mediante URL firmada)."
+              : storageProvider === "vercel"
+                ? "Backups en Vercel Blob."
+                : "Sin almacenamiento externo: las copias se guardan en Postgres (máximo 25 MB por ZIP)."}
+          </p>
           {backupList.length ? (
             <div className="mt-2 divide-y divide-[var(--border-soft)] rounded-lg border border-[var(--border)]">
               {backupList.map((backup) => (

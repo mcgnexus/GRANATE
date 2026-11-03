@@ -109,7 +109,10 @@ contraseña.
 | `GEMINI_EMBEDDING_MODEL` | No | `gemini-embedding-001` |
 | `EMBEDDING_DIMENSIONS` | No | `1536` (compatible con HNSW de pgvector) |
 | `DAILY_TOKEN_QUOTA` | No | Límite por usuario y día |
-| `BLOB_READ_WRITE_TOKEN` | No | Adjuntos y backups en Vercel Blob; sin él se usa Postgres |
+| `B2_KEY_ID` / `B2_APPLICATION_KEY` | No | Backblaze B2 (bucket privado, URLs firmadas) |
+| `B2_BUCKET` / `B2_ENDPOINT` | No | Bucket y endpoint S3 de B2 |
+| `B2_REGION` | No | Región de B2; se deduce del endpoint si falta |
+| `BLOB_READ_WRITE_TOKEN` | No | Alternativa Vercel Blob para adjuntos y backups |
 | `CRON_SECRET` | No | Protege `/api/cron/backup` con `Authorization: Bearer` |
 | `RESEND_API_KEY` / `EMAIL_FROM` | No | Verificación por email |
 
@@ -137,7 +140,7 @@ En local: `http://localhost:3000/api/auth/google/callback`.
 - **Historial visual** con diff línea a línea y restauración de versiones.
 - **Plantillas** (`Plantillas/`) y **nota diaria** (`Diario/AAAA-MM-DD.md`) con variables `{{title}}`, `{{date}}`, `{{time}}`.
 - **Gestión de etiquetas**: renombrar, fusionar y eliminar en toda la bóveda.
-- Adjuntos hasta 10 MB (Vercel Blob si hay token; si no, Postgres) con galería, copia de `![[…]]` y borrado.
+- Adjuntos hasta 10 MB (Backblaze B2 si está configurado; si no, Vercel Blob o Postgres) con galería, copia de `![[…]]` y borrado.
 - Exportación completa a ZIP y backups manuales/automáticos.
 
 ### Wikilinks, backlinks y grafo
@@ -202,9 +205,10 @@ bóvedas, buscar, leer, escribir y listar etiquetas. Instrucciones en
 
 ### Backups
 
-`POST /api/v1/vaults/<id>/backups` crea un ZIP; si `BLOB_READ_WRITE_TOKEN` existe se guarda en
-Vercel Blob y, si no, en Postgres (máximo 25 MB). El cron diario de `vercel.json` conserva las
-7 últimas copias por bóveda. Protege el endpoint con `CRON_SECRET`.
+`POST /api/v1/vaults/<id>/backups` crea un ZIP; se guarda en **Backblaze B2** si está
+configurado, en Vercel Blob como alternativa o en Postgres (máximo 25 MB). El bucket de B2 es
+privado y las descargas usan URLs firmadas. El cron diario de `vercel.json` conserva las 7
+últimas copias por bóveda. Protege el endpoint con `CRON_SECRET`.
 
 ## Despliegue en Vercel
 
@@ -217,8 +221,8 @@ Vercel Blob y, si no, en Postgres (máximo 25 MB). El cron diario de `vercel.jso
 Notas para el plan Hobby:
 
 - Funciones de 60 s: el indexado se hace por nota al guardar y el backfill en lotes de 15 desde Ajustes.
-- **Cron diario** (`vercel.json`) para backups. Define `CRON_SECRET` y `BLOB_READ_WRITE_TOKEN`
-  si quieres almacenamiento externo; sin Blob las copias van a Postgres.
+- **Cron diario** (`vercel.json`) para backups. Define `CRON_SECRET` y las variables de
+  Backblaze B2 (o `BLOB_READ_WRITE_TOKEN`); sin almacenamiento externo las copias van a Postgres.
 - Límite de cuerpo: 4,5 MB por petición en Hobby. Los ZIP de importación grandes deben dividirse.
 
 ## Seguridad
@@ -272,13 +276,13 @@ tests/                 Vitest + Playwright (`tests/e2e`)
 
 1. **Sync**: el CLI resuelve conflictos con copias locales, pero no hay demonio de sincronización continua ni resolución visual de conflictos.
 2. **Arrastrar notas** funciona con ratón/escritorio. En móvil usa el menú ⋯ → **Mover a…**.
-3. **Adjuntos**: si no hay Vercel Blob se guardan en Postgres; el límite práctico recomendado es <100 MB por bóveda.
+3. **Adjuntos**: con Backblaze B2 (o Vercel Blob) no ocupan Neon; sin almacenamiento externo se guardan en Postgres y el límite práctico es <100 MB por bóveda.
 4. **Bases**: subconjunto, sin fórmulas, resúmenes ni vistas de mapa.
 5. **Canvas**: edición básica (mover, crear tarjeta, conectar); sin redimensionado avanzado ni colores por nodo.
 6. **PWA**: shell offline; las notas requieren conexión salvo que se añada caché IndexedDB.
 7. **Embeddings**: Gemini a 1536 dimensiones; cambiar de modelo exige reindexar.
 8. **PDF/Word**: no se indexan; solo Markdown.
-9. **Blob**: el plan actual de Vercel puede impedir crear un store nuevo; la app funciona con el fallback de Postgres.
+9. **Almacenamiento**: B2 tiene 10 GB gratuitos y necesita un bucket propio; el bucket privado se sirve con URLs firmadas. Vercel Blob queda como alternativa si se libera el límite de la cuenta.
 
 ## Roadmap
 

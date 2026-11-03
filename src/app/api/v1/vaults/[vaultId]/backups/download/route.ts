@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { backups } from "@/lib/db/schema";
 import { withVault, apiError } from "@/lib/http";
+import { b2KeyFromRef, isB2Ref, signedB2Url } from "@/lib/storage";
 
 type Ctx = { params: Promise<{ vaultId: string }> };
 
@@ -32,6 +33,10 @@ export async function GET(request: NextRequest, ctx: Ctx) {
           "Cache-Control": "no-store",
         },
       });
+    }
+
+    if (isB2Ref(row.blobUrl)) {
+      return Response.redirect(await signedB2Url(b2KeyFromRef(row.blobUrl), 3600), 307);
     }
 
     if (row.blobUrl) {
