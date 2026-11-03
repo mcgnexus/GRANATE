@@ -414,6 +414,51 @@ export async function renameFolder(input: {
   return { movedNotes: moves.length, movedFolders: affected.length };
 }
 
+/** Deletes an empty folder. Refuses if it still has notes or subfolders. */
+export async function deleteFolder(vaultId: string, folderPath: string) {
+  const path = normalizeVaultPath(folderPath);
+  if (!path) throw new Error("La carpeta necesita un nombre");
+  const prefix = `${path.toLowerCase()}/`;
+
+  const noteCount = await db
+    .select({ id: notes.id })
+    .from(notes)
+    .where(
+      and(
+        eq(notes.vaultId, vaultId),
+        isNull(notes.deletedAt),
+        sql`lower(${notes.path}) like ${`${prefix}%`}`,
+      ),
+    )
+    .limit(1);
+  if (noteCount[0]) {
+    throw new Error("La carpeta no está vacía. Mueve o borra sus notas primero.");
+  }
+
+  const subfolder = await db
+    .select({ id: folders.id })
+    .from(folders)
+    .where(
+      and(
+        eq(folders.vaultId, vaultId),
+        sql`lower(${folders.path}) like ${`${prefix}%`}`,
+      ),
+    )
+    .limit(1);
+  if (subfolder[0]) {
+    throw new Error("La carpeta contiene subcarpetas. Elimínalas primero.");
+  }
+
+  await db
+    .delete(folders)
+    .where(
+      and(
+        eq(folders.vaultId, vaultId),
+        sql`lower(${folders.path}) = ${path.toLowerCase()}`,
+      ),
+    );
+}
+
 export async function deleteNote(vaultId: string, noteId: string) {
   await db
     .update(notes)

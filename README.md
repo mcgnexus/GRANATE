@@ -105,6 +105,8 @@ contraseña.
 | `GOOGLE_CLIENT_ID/SECRET` | No | Activa el botón de Google |
 | `OPENROUTER_API_KEY` | No | Chat y acciones LLM |
 | `OPENROUTER_MODEL` | No | Por defecto `google/gemini-2.5-flash` |
+| `OPENROUTER_AGENT_MODEL` | No | Agente; por defecto `nvidia/nemotron-3.5-lightning:free` |
+| `OPENROUTER_AGENT_FALLBACKS` | No | Lista separada por comas para fallback del agente |
 | `GEMINI_API_KEY` | No | Embeddings (OpenRouter no los ofrece) |
 | `GEMINI_EMBEDDING_MODEL` | No | `gemini-embedding-001` |
 | `EMBEDDING_DIMENSIONS` | No | `1536` (compatible con HNSW de pgvector) |
@@ -164,6 +166,18 @@ En local: `http://localhost:3000/api/auth/google/callback`.
 - Las acciones que reescriben muestran un **diff antes/después** y solo se aplican si lo confirmas.
 - Cuota diaria por usuario + registro de uso en `llm_runs` y `usage_quotas`.
 - Las notas se delimitan como datos no confiables para resistir prompt injection.
+
+### Agente de la bóveda
+
+- El panel **Agente** convierte una instrucción en lenguaje natural en un **plan JSON** de
+  operaciones: crear notas/carpetas, mover o renombrar notas/carpetas, etiquetar y mover notas a
+  la papelera.
+- El plan se muestra antes de ejecutarse; los borrados exigen una confirmación adicional.
+- La ejecución reutiliza los servicios de notas (reescritura de enlaces, tags, papelera) y
+  registra cada plan en `audit_logs`.
+- Modelo gratuito por defecto `nvidia/nemotron-3.5-lightning:free`, con fallback a
+  `google/gemma-4-31b-it:free`, `openrouter/free` y el modelo de pago. Se configura con
+  `OPENROUTER_AGENT_MODEL` / `OPENROUTER_AGENT_FALLBACKS`.
 
 ### Canvas y Bases
 

@@ -1,9 +1,9 @@
 import type { NextRequest } from "next/server";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { folders, notes } from "@/lib/db/schema";
+import { folders } from "@/lib/db/schema";
 import { withVault, apiError } from "@/lib/http";
-import { renameFolder } from "@/lib/notes";
+import { deleteFolder, renameFolder } from "@/lib/notes";
 import { normalizeVaultPath } from "@/lib/utils";
 
 type Ctx = { params: Promise<{ vaultId: string }> };
@@ -99,53 +99,7 @@ export async function DELETE(request: NextRequest, ctx: Ctx) {
     if ("response" in access) return access.response;
 
     const path = validateFolderPath(request.nextUrl.searchParams.get("path") ?? "");
-    const prefix = `${path.toLowerCase()}/`;
-
-    const noteCount = await db
-      .select({ id: notes.id })
-      .from(notes)
-      .where(
-        and(
-          eq(notes.vaultId, vaultId),
-          isNull(notes.deletedAt),
-          sql`lower(${notes.path}) like ${`${prefix}%`}`,
-        ),
-      )
-      .limit(1);
-
-    if (noteCount[0]) {
-      return Response.json(
-        { error: "La carpeta no está vacía. Mueve o borra sus notas primero." },
-        { status: 409 },
-      );
-    }
-
-    const subfolder = await db
-      .select({ id: folders.id })
-      .from(folders)
-      .where(
-        and(
-          eq(folders.vaultId, vaultId),
-          sql`lower(${folders.path}) like ${`${prefix}%`}`,
-        ),
-      )
-      .limit(1);
-
-    if (subfolder[0]) {
-      return Response.json(
-        { error: "La carpeta contiene subcarpetas. Elimínalas primero." },
-        { status: 409 },
-      );
-    }
-
-    await db
-      .delete(folders)
-      .where(
-        and(
-          eq(folders.vaultId, vaultId),
-          sql`lower(${folders.path}) = ${path.toLowerCase()}`,
-        ),
-      );
+    await deleteFolder(vaultId, path);
 
     return Response.json({ ok: true });
   } catch (error) {

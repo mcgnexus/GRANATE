@@ -25,6 +25,24 @@ export const config = {
   get llmModel() {
     return getEnv("OPENROUTER_MODEL") ?? "google/gemini-2.5-flash";
   },
+  get agentModel() {
+    return getEnv("OPENROUTER_AGENT_MODEL") ?? "nvidia/nemotron-3.5-lightning:free";
+  },
+  get agentFallbacks() {
+    const configured = (getEnv("OPENROUTER_AGENT_FALLBACKS") ?? "")
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+    return Array.from(
+      new Set([
+        this.agentModel,
+        ...configured,
+        "google/gemma-4-31b-it:free",
+        "openrouter/free",
+        this.llmModel,
+      ]),
+    );
+  },
   get embeddingModel() {
     return getEnv("GEMINI_EMBEDDING_MODEL") ?? "gemini-embedding-001";
   },

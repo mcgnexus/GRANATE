@@ -31,6 +31,7 @@ import { MarkdownPreview } from "./markdown-preview";
 import { SearchDialog } from "./search-dialog";
 import { GraphView } from "./graph-view";
 import { ChatPanel } from "./chat-panel";
+import { AgentPanel } from "./agent-panel";
 import { CanvasView } from "./canvas-view";
 import { BaseView } from "./base-view";
 import { SettingsModal } from "./settings-modal";
@@ -88,6 +89,7 @@ export function Workspace({ vault }: { vault: VaultAccess }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [graphOpen, setGraphOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  const [assistantTab, setAssistantTab] = useState<"ask" | "agent">("ask");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [newNoteOpen, setNewNoteOpen] = useState(false);
@@ -1219,20 +1221,46 @@ views:
         {chatOpen ? (
           <aside className="fixed inset-y-12 right-0 z-30 w-full max-w-[420px] border-l border-[var(--border)] bg-[var(--panel)] shadow-2xl lg:static lg:inset-auto lg:z-auto lg:w-[380px] lg:shadow-none">
             <div className="flex h-full flex-col">
-              <div className="flex items-center justify-between border-b border-[var(--border)] px-3 py-2 lg:hidden">
-                <span className="text-xs">Asistente</span>
-                <button type="button" className="btn btn-ghost h-7 w-7 p-0" onClick={() => setChatOpen(false)}>
+              <div className="flex items-center gap-1 border-b border-[var(--border)] px-2 py-1.5">
+                <button
+                  type="button"
+                  onClick={() => setAssistantTab("ask")}
+                  className={`btn h-7 px-2 text-[10px] ${assistantTab === "ask" ? "bg-[var(--accent-soft)]" : "btn-ghost"}`}
+                >
+                  Preguntar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAssistantTab("agent")}
+                  className={`btn h-7 px-2 text-[10px] ${assistantTab === "agent" ? "bg-[var(--accent-soft)]" : "btn-ghost"}`}
+                >
+                  Agente
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-ghost ml-auto h-7 w-7 p-0"
+                  onClick={() => setChatOpen(false)}
+                  title="Cerrar asistente"
+                >
                   ✕
                 </button>
               </div>
               <div className="min-h-0 flex-1">
-                <ChatPanel
-                  vaultId={vault.id}
-                  onOpenNote={(path) => {
-                    void openByPath(path);
-                    setChatOpen(false);
-                  }}
-                />
+                {assistantTab === "ask" ? (
+                  <ChatPanel
+                    vaultId={vault.id}
+                    onOpenNote={(path) => {
+                      void openByPath(path);
+                      setChatOpen(false);
+                    }}
+                  />
+                ) : (
+                  <AgentPanel
+                    vaultId={vault.id}
+                    onChanged={() => void loadTree()}
+                    onToast={showToast}
+                  />
+                )}
               </div>
             </div>
           </aside>
