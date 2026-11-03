@@ -19,6 +19,18 @@ Bóveda de notas Markdown tipo Obsidian, en la web, guardada en **Neon Postgres*
   reescritura de enlaces, búsqueda, Bases, Canvas, export ZIP, papelera, CLI e importación de la
   bóveda real de Obsidian (23 notas + adjunto, 0 enlaces sin resolver).
 
+## Despliegue actual
+
+- **URL de producción:** https://granate-five.vercel.app
+- **Proyecto Vercel:** `manuel-carrascos-projects/granate`
+- **Repositorio conectado:** cada push a `main` lanza un despliegue de producción.
+- Variables configuradas en Vercel (entorno Production): `DATABASE_URL`, `APP_URL`,
+  `ALLOW_OPEN_REGISTRATION`, `AUTO_VERIFY_EMAILS`, `OPENROUTER_MODEL`,
+  `GEMINI_EMBEDDING_MODEL`, `EMBEDDING_DIMENSIONS`, `DAILY_TOKEN_QUOTA` y `EMAIL_FROM`.
+- Las claves `OPENROUTER_API_KEY`, `GEMINI_API_KEY`, `GOOGLE_CLIENT_ID/SECRET` y `RESEND_API_KEY`
+  aún no están configuradas; añádelas en Vercel y redespliega para activar chat, embeddings,
+  Google y verificación de email.
+
 ## Stack
 
 | Capa | Tecnología |
