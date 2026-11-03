@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { after } from "next/server";
 import { z } from "zod";
 import { withVault, apiError } from "@/lib/http";
+import { isUniqueViolation } from "@/lib/auth/api";
 import {
   deleteNote,
   getNote,
@@ -63,6 +64,12 @@ export async function PATCH(request: NextRequest, ctx: Ctx) {
     const detail = await getNote(vaultId, note.id);
     return Response.json({ note: detail ?? note });
   } catch (error) {
+    if (isUniqueViolation(error)) {
+      return Response.json(
+        { error: "Ya existe una nota con esa ruta. Elige otro nombre o carpeta." },
+        { status: 409 },
+      );
+    }
     return apiError(error);
   }
 }

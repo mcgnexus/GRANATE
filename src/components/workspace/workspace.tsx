@@ -81,6 +81,8 @@ export function Workspace({ vault }: { vault: VaultAccess }) {
   const [importOpen, setImportOpen] = useState(false);
   const [newNoteOpen, setNewNoteOpen] = useState(false);
   const [newNotePath, setNewNotePath] = useState("Nueva nota.md");
+  const [newFolderOpen, setNewFolderOpen] = useState(false);
+  const [newFolderPath, setNewFolderPath] = useState("Nueva carpeta");
   const [llmResult, setLlmResult] = useState<{
     title: string;
     result: string;
@@ -353,8 +355,60 @@ export function Workspace({ vault }: { vault: VaultAccess }) {
     }
   }
 
-  async function createBase() {
-    const path = window.prompt("Ruta de la nueva base", "Proyectos.base");
+  async function createFolder() {
+    const path = newFolderPath.trim().replace(/^\/+|\/+$/g, "");
+    if (!path) return;
+    const response = await fetch(`/api/v1/vaults/${vault.id}/folders`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path }),
+    });
+    const data = (await response.json().catch(() => ({}))) as { error?: string };
+    if (!response.ok) {
+      showToast(data.error ?? "No se pudo crear la carpeta");
+      return;
+    }
+    setNewFolderOpen(false);
+    setNewFolderPath("Nueva carpeta");
+    await loadTree();
+    showToast(`Carpeta creada: ${path}`);
+  }
+
+  async function moveNote(noteId: string, folderPath: string) {
+    const note = tree.notes.find((item) => item.id === noteId);
+    if (!note) return;
+    const filename = note.path.split("/").pop();
+    if (!filename) return;
+    const nextPath = folderPath ? `${folderPath}/${filename}` : filename;
+    if (nextPath.toLowerCase() === note.path.toLowerCase()) return;
+
+    if (active?.id === noteId && content !== active.content) {
+      await saveNow();
+    }
+
+    const response = await fetch(`/api/v1/vaults/${vault.id}/notes/${noteId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: nextPath }),
+    });
+    const data = (await response.json().catch(() => ({}))) as {
+      note?: NoteDetail;
+      error?: string;
+    };
+    if (!response.ok || !data.note) {
+      showToast(data.error ?? "No se pudo mover la nota");
+      return;
+    }
+
+    if (active?.id === noteId) {
+      setActive(data.note);
+      setContent(data.note.content);
+    }
+    await loadTree();
+    showToast(folderPath ? `Nota movida a ${folderPath}` : "Nota movida a la raíz");
+  }
+
+  async function createBase() {    const path = window.prompt("Ruta de la nueva base", "Proyectos.base");
     if (!path) return;
     const finalPath = path.endsWith(".base") ? path : `${path}.base`;
     const raw = `filters: ''
@@ -571,6 +625,11 @@ views:
                 setNewNotePath("Nueva nota.md");
                 setNewNoteOpen(true);
               }}
+              onNewFolder={() => {
+                setNewFolderPath("Nueva carpeta");
+                setNewFolderOpen(true);
+              }}
+              onMoveNote={(noteId, folderPath) => void moveNote(noteId, folderPath)}
               onOpenCanvas={(canvas) => {
                 setCanvasTarget(canvas);
                 setView("canvas");
@@ -975,6 +1034,38 @@ views:
             </button>
             <button type="button" className="btn btn-primary" onClick={() => void createNote()}>
               Crear
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        open={newFolderOpen}
+        onClose={() => setNewFolderOpen(false)}
+        title="Nueva carpeta"
+        subtitle="Puedes anidar carpetas con /"
+      >
+        <div className="space-y-4 p-5">
+          <input
+            className="input"
+            value={newFolderPath}
+            onChange={(event) => setNewFolderPath(event.target.value)}
+            placeholder="Carpeta/Subcarpeta"
+            autoFocus
+            onKeyDown={(event) => {
+              if (event.key === "Enter") void createFolder();
+            }}
+          />
+          <p className="text-[11px] leading-5 text-[var(--muted)]">
+            Después podrás arrastrar notas dentro o fuera de la carpeta. También puedes crear una
+            nota nueva escribiendo su ruta completa.
+          </p>
+          <div className="flex justify-end gap-2">
+            <button type="button" className="btn" onClick={() => setNewFolderOpen(false)}>
+              Cancelar
+            </button>
+            <button type="button" className="btn btn-primary" onClick={() => void createFolder()}>
+              Crear carpeta
             </button>
           </div>
         </div>

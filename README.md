@@ -127,6 +127,7 @@ En local: `http://localhost:3000/api/auth/google/callback`.
 
 - CRUD de bóvedas con roles (`owner`, `editor`, `viewer`).
 - Árbol de carpetas y notas, creación, renombrado, papelera e historial de versiones.
+- **Carpetas**: botón de nueva carpeta (con anidamiento `Carpeta/Subcarpeta`) y **arrastrar notas dentro y fuera** de ellas. La fila **Raíz** sirve para devolver una nota al nivel superior.
 - Autosave con debounce y `Ctrl/Cmd+S`.
 - Frontmatter YAML editable como propiedades (se conserva el Markdown original).
 - Adjuntos hasta 10 MB (guardados en Postgres como base64 en este MVP).
@@ -232,12 +233,13 @@ tests/                 Vitest
 ## Limitaciones conocidas
 
 1. **Sin sync continuo con Obsidian**: se importa un ZIP y se exporta. El diseño para un agente CLI está documentado en `docs/roadmap.md`.
-2. **Adjuntos en Postgres**: válido para bóvedas pequeñas; para >100 MB hay que moverlos a Vercel Blob/S3.
-3. **Bases**: subconjunto, sin fórmulas, resúmenes ni vistas de mapa.
-4. **Canvas**: edición básica (mover, crear tarjeta, conectar); sin redimensionado avanzado ni colores por nodo.
-5. **PWA**: shell offline; las notas requieren conexión salvo que se añada caché IndexedDB (v1.1).
-6. **Embeddings**: Gemini a 1536 dimensiones; cambiar de modelo exige reindexar.
-7. **PDF/Word**: no se indexan; solo Markdown.
+2. **Arrastrar notas** funciona con ratón/escritorio. En móvil, usa el botón de renombrar (lápiz) y escribe la nueva ruta para moverla.
+3. **Adjuntos en Postgres**: válido para bóvedas pequeñas; para >100 MB hay que moverlos a Vercel Blob/S3.
+4. **Bases**: subconjunto, sin fórmulas, resúmenes ni vistas de mapa.
+5. **Canvas**: edición básica (mover, crear tarjeta, conectar); sin redimensionado avanzado ni colores por nodo.
+6. **PWA**: shell offline; las notas requieren conexión salvo que se añada caché IndexedDB (v1.1).
+7. **Embeddings**: Gemini a 1536 dimensiones; cambiar de modelo exige reindexar.
+8. **PDF/Word**: no se indexan; solo Markdown.
 
 ## Roadmap
 

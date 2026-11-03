@@ -6,6 +6,8 @@ import {
   FileText,
   Folder,
   FolderOpen,
+  FolderPlus,
+  Home,
   LayoutDashboard,
   Plus,
   SquareKanban,
@@ -75,6 +77,8 @@ export function FileTree({
   activeId,
   onOpen,
   onNewNote,
+  onNewFolder,
+  onMoveNote,
   onOpenCanvas,
   onOpenBase,
   onNewCanvas,
@@ -87,6 +91,8 @@ export function FileTree({
   activeId?: string;
   onOpen: (note: TreeNote) => void;
   onNewNote: () => void;
+  onNewFolder: () => void;
+  onMoveNote: (noteId: string, folderPath: string) => void;
   onOpenCanvas: (canvas: TreeCanvas) => void;
   onOpenBase: (base: TreeBase) => void;
   onNewCanvas: () => void;
@@ -98,6 +104,18 @@ export function FileTree({
     [folders],
   );
   const [expanded, setExpanded] = useState<Set<string>>(allFolders);
+  const [dragOver, setDragOver] = useState<string | null>(null);
+
+  function dropNote(event: React.DragEvent, folderPath: string) {
+    event.preventDefault();
+    const noteId = event.dataTransfer.getData("text/plain");
+    setDragOver(null);
+    if (!noteId) return;
+    if (folderPath) {
+      setExpanded((previous) => new Set(previous).add(folderPath));
+    }
+    onMoveNote(noteId, folderPath);
+  }
 
   function toggle(path: string) {
     setExpanded((prev) => {
@@ -115,14 +133,20 @@ export function FileTree({
         <button
           key={`n-${node.id}`}
           type="button"
+          draggable
+          onDragStart={(event) => {
+            event.dataTransfer.setData("text/plain", node.id);
+            event.dataTransfer.effectAllowed = "move";
+          }}
+          onDragEnd={() => setDragOver(null)}
           onClick={() => onOpen({ id: node.id, path: node.path, title: node.name })}
-          className={`group flex w-full items-center gap-1.5 rounded-md py-[5px] pr-2 text-left text-[12.5px] transition-colors ${
+          className={`group flex w-full cursor-grab items-center gap-1.5 rounded-md py-[5px] pr-2 text-left text-[12.5px] transition-colors active:cursor-grabbing ${
             active
               ? "bg-[var(--accent-soft)] text-[var(--text)]"
               : "text-[var(--text-soft)] hover:bg-[var(--panel-2)]"
           }`}
           style={{ paddingLeft: `${depth * 12 + 8}px` }}
-          title={node.path}
+          title={`${node.path} · arrastra a una carpeta`}
         >
           <FileText
             size={13}
@@ -140,8 +164,24 @@ export function FileTree({
           <button
             type="button"
             onClick={() => toggle(node.path)}
-            className="flex w-full items-center gap-1.5 rounded-md py-[5px] pr-2 text-left text-[12.5px] text-[var(--text-soft)] hover:bg-[var(--panel-2)]"
+            onDragOver={(event) => {
+              event.preventDefault();
+              event.dataTransfer.dropEffect = "move";
+              setDragOver(node.path);
+            }}
+            onDragLeave={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                setDragOver(null);
+              }
+            }}
+            onDrop={(event) => dropNote(event, node.path)}
+            className={`flex w-full items-center gap-1.5 rounded-md py-[5px] pr-2 text-left text-[12.5px] text-[var(--text-soft)] transition-colors ${
+              dragOver === node.path
+                ? "bg-[var(--accent-soft)] ring-1 ring-[var(--accent)]"
+                : "hover:bg-[var(--panel-2)]"
+            }`}
             style={{ paddingLeft: `${depth * 12 + 4}px` }}
+            title={`${node.path} · suelta aquí una nota`}
           >
             <ChevronRight
               size={12}
@@ -166,24 +206,72 @@ export function FileTree({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between px-3 py-2">
+      <div
+        className={`flex items-center justify-between px-3 py-2 transition-colors ${
+          dragOver === "__root__" ? "bg-[var(--accent-soft)] ring-1 ring-inset ring-[var(--accent)]" : ""
+        }`}
+        onDragOver={(event) => {
+          event.preventDefault();
+          event.dataTransfer.dropEffect = "move";
+          setDragOver("__root__");
+        }}
+        onDragLeave={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+            setDragOver(null);
+          }
+        }}
+        onDrop={(event) => dropNote(event, "")}
+        title="Suelta aquí para mover a la raíz"
+      >
         <span className="text-[10px] font-medium uppercase tracking-[0.18em] text-[var(--muted)]">
           Notas
         </span>
-        <button
-          type="button"
-          onClick={onNewNote}
-          className="btn btn-ghost h-6 w-6 p-0"
-          title="Nueva nota"
-        >
-          <Plus size={14} />
-        </button>
+        <div className="flex items-center gap-0.5">
+          <button
+            type="button"
+            onClick={onNewFolder}
+            className="btn btn-ghost h-6 w-6 p-0"
+            title="Nueva carpeta"
+          >
+            <FolderPlus size={14} />
+          </button>
+          <button
+            type="button"
+            onClick={onNewNote}
+            className="btn btn-ghost h-6 w-6 p-0"
+            title="Nueva nota"
+          >
+            <Plus size={14} />
+          </button>
+        </div>
       </div>
       <div className="scrollbar min-h-0 flex-1 overflow-y-auto px-1.5 pb-4">
+        <div
+          onDragOver={(event) => {
+            event.preventDefault();
+            event.dataTransfer.dropEffect = "move";
+            setDragOver("__root__");
+          }}
+          onDragLeave={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+              setDragOver(null);
+            }
+          }}
+          onDrop={(event) => dropNote(event, "")}
+          className={`mb-1 flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] transition-colors ${
+            dragOver === "__root__"
+              ? "bg-[var(--accent-soft)] text-[var(--text)] ring-1 ring-[var(--accent)]"
+              : "text-[var(--muted)] hover:bg-[var(--panel-2)]"
+          }`}
+          title="Mover a la raíz"
+        >
+          <Home size={12} />
+          Raíz
+        </div>
         {renderNode(tree, 0)}
-        {notes.length === 0 ? (
+        {notes.length === 0 && folders.length === 0 ? (
           <p className="px-3 py-4 text-xs leading-5 text-[var(--muted)]">
-            Bóveda vacía. Crea una nota o importa tu ZIP de Obsidian.
+            Bóveda vacía. Crea una nota, una carpeta o importa tu ZIP de Obsidian.
           </p>
         ) : null}
 
