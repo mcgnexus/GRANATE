@@ -8,6 +8,21 @@ export function RegisterSW() {
     if (window.location.protocol !== "https:" && window.location.hostname !== "localhost") return;
 
     let cancelled = false;
+    let refreshing = false;
+
+    const onControllerChange = () => {
+      if (refreshing) return;
+      refreshing = true;
+      try {
+        if (sessionStorage.getItem("granate-sw-reloaded") === "1") return;
+        sessionStorage.setItem("granate-sw-reloaded", "1");
+      } catch {
+        // Si sessionStorage falla, recargamos igualmente una vez por evento.
+      }
+      window.location.reload();
+    };
+    navigator.serviceWorker.addEventListener("controllerchange", onControllerChange);
+
     const timer = window.setTimeout(async () => {
       try {
         const registration = await navigator.serviceWorker.register("/sw.js", {
@@ -25,6 +40,7 @@ export function RegisterSW() {
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
+      navigator.serviceWorker.removeEventListener("controllerchange", onControllerChange);
     };
   }, []);
   return null;
