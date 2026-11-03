@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { z } from "zod";
 import { withVault, apiError } from "@/lib/http";
-import { createNote, getNoteByPath, listNotes } from "@/lib/notes";
+import { createNote, getNoteByPath, getTrash, listNotes } from "@/lib/notes";
 
 type Ctx = { params: Promise<{ vaultId: string }> };
 
@@ -24,7 +24,9 @@ export async function GET(request: NextRequest, ctx: Ctx) {
     }
 
     const includeDeleted = request.nextUrl.searchParams.get("trash") === "1";
-    return Response.json({ notes: await listNotes(vaultId, includeDeleted) });
+    return Response.json({
+      notes: includeDeleted ? await getTrash(vaultId) : await listNotes(vaultId),
+    });
   } catch (error) {
     return apiError(error);
   }
