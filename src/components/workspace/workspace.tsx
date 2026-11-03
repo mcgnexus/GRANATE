@@ -9,6 +9,7 @@ import {
   Loader2,
   Menu,
   MessageSquare,
+  MoreHorizontal,
   Network,
   PanelLeftClose,
   PencilLine,
@@ -72,6 +73,7 @@ export function Workspace({ vault }: { vault: VaultAccess }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchSeed, setSearchSeed] = useState("");
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [graphOpen, setGraphOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -400,20 +402,21 @@ views:
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden">
-      <header className="flex h-12 shrink-0 items-center gap-2 border-b border-[var(--border)] bg-[var(--panel)] px-2 sm:px-3">
+      <header className="relative flex h-12 shrink-0 items-center gap-2 border-b border-[var(--border)] bg-[var(--panel)] px-2 sm:px-3">
         <button
           type="button"
-          className="btn btn-ghost h-8 w-8 p-0 lg:hidden"
+          className="btn btn-ghost h-8 w-8 shrink-0 p-0 lg:hidden"
           onClick={() => setSidebarOpen((open) => !open)}
+          title="Abrir menú"
         >
           <Menu size={16} />
         </button>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <span className="grid h-7 w-7 place-items-center rounded-md bg-[var(--accent)] text-[11px] font-bold text-white">
             G
           </span>
           <div className="hidden sm:block">
-            <div className="text-xs font-medium leading-tight">{vault.name}</div>
+            <div className="max-w-[160px] truncate text-xs font-medium leading-tight">{vault.name}</div>
             <div className="text-[10px] leading-tight text-[var(--muted)]">
               {vault.role === "owner" ? "propietario" : vault.role}
             </div>
@@ -423,50 +426,119 @@ views:
         <button
           type="button"
           onClick={() => setSearchOpen(true)}
-          className="ml-2 flex h-8 flex-1 max-w-md items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--panel-2)] px-3 text-left text-xs text-[var(--muted)] hover:border-[var(--muted)]"
+          className="btn btn-ghost ml-1 h-8 w-8 shrink-0 p-0 sm:hidden"
+          title="Buscar"
+          aria-label="Buscar"
+        >
+          <Search size={16} />
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setSearchOpen(true)}
+          className="ml-2 hidden h-8 min-w-0 max-w-md flex-1 items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--panel-2)] px-3 text-left text-xs text-[var(--muted)] hover:border-[var(--muted)] sm:flex"
         >
           <Search size={14} />
           <span className="flex-1 truncate">Buscar en la bóveda…</span>
-          <span className="kbd hidden sm:inline">Ctrl K</span>
+          <span className="kbd hidden md:inline">Ctrl K</span>
         </button>
 
-        <div className="ml-auto flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => {
-              setView("note");
-              setGraphOpen(true);
-            }}
-            className="btn btn-ghost h-8 gap-1.5 px-2 text-xs"
-            title="Grafo"
-          >
-            <Network size={15} /> <span className="hidden sm:inline">Grafo</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setChatOpen((open) => !open)}
-            className={`btn btn-ghost h-8 gap-1.5 px-2 text-xs ${chatOpen ? "bg-[var(--accent-soft)]" : ""}`}
-            title="Preguntar a la bóveda"
-          >
-            <MessageSquare size={15} /> <span className="hidden sm:inline">Preguntar</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setImportOpen(true)}
-            className="btn btn-ghost h-8 gap-1.5 px-2 text-xs"
-            title="Importar bóveda"
-          >
-            <Upload size={15} /> <span className="hidden md:inline">Importar</span>
-          </button>
+        <div className="ml-auto flex shrink-0 items-center gap-1">
+          <div className="hidden items-center gap-1 sm:flex">
+            <button
+              type="button"
+              onClick={() => {
+                setView("note");
+                setGraphOpen(true);
+              }}
+              className="btn btn-ghost h-8 gap-1.5 px-2 text-xs"
+              title="Grafo"
+            >
+              <Network size={15} /> <span className="hidden md:inline">Grafo</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setChatOpen((open) => !open)}
+              className={`btn btn-ghost h-8 gap-1.5 px-2 text-xs ${chatOpen ? "bg-[var(--accent-soft)]" : ""}`}
+              title="Preguntar a la bóveda"
+            >
+              <MessageSquare size={15} /> <span className="hidden md:inline">Preguntar</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setImportOpen(true)}
+              className="btn btn-ghost h-8 gap-1.5 px-2 text-xs"
+              title="Importar bóveda"
+            >
+              <Upload size={15} /> <span className="hidden lg:inline">Importar</span>
+            </button>
+          </div>
+
           <button
             type="button"
             onClick={() => setSettingsOpen(true)}
-            className="btn btn-ghost h-8 w-8 p-0"
+            className="btn btn-ghost h-8 w-8 shrink-0 p-0"
             title="Ajustes"
+            aria-label="Ajustes"
           >
             <Settings size={15} />
           </button>
+
+          <button
+            type="button"
+            onClick={() => setMobileMenuOpen((open) => !open)}
+            className="btn btn-ghost h-8 w-8 shrink-0 p-0 sm:hidden"
+            title="Más acciones"
+            aria-label="Más acciones"
+            aria-expanded={mobileMenuOpen}
+          >
+            <MoreHorizontal size={16} />
+          </button>
         </div>
+
+        {mobileMenuOpen ? (
+          <>
+            <button
+              type="button"
+              aria-label="Cerrar menú"
+              className="fixed inset-0 z-30 bg-black/20 sm:hidden"
+              onClick={() => setMobileMenuOpen(false)}
+            />
+            <div className="panel absolute right-2 top-11 z-40 w-56 overflow-hidden p-1 shadow-2xl sm:hidden">
+              <button
+                type="button"
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  setView("note");
+                  setGraphOpen(true);
+                }}
+                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs hover:bg-[var(--panel-2)]"
+              >
+                <Network size={14} /> Grafo
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  setChatOpen(true);
+                }}
+                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs hover:bg-[var(--panel-2)]"
+              >
+                <MessageSquare size={14} /> Preguntar a la bóveda
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  setImportOpen(true);
+                }}
+                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs hover:bg-[var(--panel-2)]"
+              >
+                <Upload size={14} /> Importar bóveda
+              </button>
+            </div>
+          </>
+        ) : null}
       </header>
 
       <div className="flex min-h-0 flex-1">
