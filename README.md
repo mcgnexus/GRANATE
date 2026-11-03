@@ -9,8 +9,10 @@ Bóveda de notas Markdown tipo Obsidian, en la web, guardada en **Neon Postgres*
 - Proyecto creado en `C:\Users\Manuel Q\Proyectos\GRANATE`.
 - Base de datos **Neon** aprovisionada (proyecto `GRANATE`, Postgres 18) y esquema aplicado.
 - `.env.local` ya contiene `DATABASE_URL` y la configuración local (no se versiona).
-- **Registro público cerrado**: es una app de uso personal. La cuenta se crea una sola vez con
-  `npm run user:create` (email + contraseña que elijas tú).
+- **Registro abierto con email y contraseña** (`ALLOW_OPEN_REGISTRATION=true`). La cuenta del
+  propietario ya está creada, con la bóveda **“Mi bóveda”**. La contraseña no se guarda en el
+  repositorio ni en la documentación.
+- `npm run user:create` sigue disponible para crear cuentas o resetear contraseñas desde el servidor.
 - Sin claves de LLM todavía: el chat y las acciones devuelven un 400 controlado; la búsqueda
   funciona por texto. Añade `OPENROUTER_API_KEY` y `GEMINI_API_KEY` en `.env.local` para activarlas.
 - Verificado contra Neon real: registro/login, bóvedas, notas, tags, backlinks, renombrado con
@@ -66,10 +68,11 @@ Bóveda de notas Markdown tipo Obsidian, en la web, guardada en **Neon Postgres*
 
 6. Abre `http://localhost:3000`, crea una cuenta y una bóveda. Si `AUTO_VERIFY_EMAILS=true` no necesitas verificar el email en local.
 
-### Crear tu cuenta (uso personal)
+### Crear o resetear una cuenta
 
-El registro público está cerrado (`ALLOW_OPEN_REGISTRATION=false`). Crea la única cuenta desde
-la terminal:
+El registro está abierto: cualquiera puede crear una cuenta desde `/register` con email y
+contraseña. Además, puedes crear o resetear una cuenta desde la terminal (útil si cierras el
+registro o quieres una cuenta verificada sin depender del email):
 
 ```powershell
 npm run user:create -- --email tu@email.com --name "Tu nombre"
@@ -77,9 +80,7 @@ npm run user:create -- --email tu@email.com --name "Tu nombre"
 
 Te pedirá la contraseña dos veces sin mostrarla. El script marca el email como verificado y crea
 la bóveda **“Mi bóveda”** si todavía no tienes ninguna. Si el usuario ya existe, actualiza su
-contraseña (útil como reseteo).
-
-Para cambiar la contraseña más adelante, vuelve a ejecutar el mismo comando.
+contraseña.
 
 ### Variables de entorno
 

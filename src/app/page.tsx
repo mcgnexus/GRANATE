@@ -12,6 +12,7 @@ import {
   SquareKanban,
 } from "lucide-react";
 import { getSessionUser } from "@/lib/auth/session";
+import { config } from "@/lib/config";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 
 export default async function Home() {
@@ -29,9 +30,20 @@ export default async function Home() {
         </div>
         <nav className="flex items-center gap-2">
           <ThemeToggle />
-          <Link href="/login" className="btn btn-primary">
-            Entrar
-          </Link>
+          {config.openRegistration ? (
+            <>
+              <Link href="/login" className="btn btn-ghost">
+                Entrar
+              </Link>
+              <Link href="/register" className="btn btn-primary">
+                Crear cuenta
+              </Link>
+            </>
+          ) : (
+            <Link href="/login" className="btn btn-primary">
+              Entrar
+            </Link>
+          )}
         </nav>
       </header>
 
@@ -51,12 +63,26 @@ export default async function Home() {
             que revisa, ordena, indexa y responde sobre tus documentos.
           </p>
           <div className="mt-9 flex flex-wrap items-center gap-3">
-            <Link href="/login" className="btn btn-primary px-5 py-3 text-base">
-              Entrar en mi bóveda <ArrowRight size={17} />
-            </Link>
+            {config.openRegistration ? (
+              <>
+                <Link href="/register" className="btn btn-primary px-5 py-3 text-base">
+                  Crear cuenta <ArrowRight size={17} />
+                </Link>
+                <Link href="/login" className="btn px-5 py-3 text-base">
+                  Ya tengo cuenta
+                </Link>
+              </>
+            ) : (
+              <Link href="/login" className="btn btn-primary px-5 py-3 text-base">
+                Entrar en mi bóveda <ArrowRight size={17} />
+              </Link>
+            )}
           </div>
           <p className="mt-4 flex items-center gap-2 text-xs text-[var(--muted)]">
-            <Lock size={13} /> Acceso personal con email y contraseña
+            <Lock size={13} />
+            {config.openRegistration
+              ? "Registro abierto con email y contraseña"
+              : "Acceso personal con email y contraseña"}
           </p>
         </div>
 
