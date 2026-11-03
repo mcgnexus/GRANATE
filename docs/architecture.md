@@ -31,6 +31,11 @@ autosave es last-write-wins por nota.
 Component). No hay RLS de Postgres en v1 porque toda la app pasa por el servidor; si se abre un
 cliente directo a la base, añadir RLS es obligatorio.
 
+La autenticación es propia (scrypt + sesiones en Postgres + OAuth de Google) en lugar de Better
+Auth: menos dependencias, mismo contrato de sesión/cookie y control total sobre el registro
+abierto y los tokens de API. Si el proyecto crece, se puede migrar sin tocar el esquema de
+bóvedas.
+
 ### Búsqueda
 
 Dos índices independientes:

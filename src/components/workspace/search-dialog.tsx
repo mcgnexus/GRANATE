@@ -17,13 +17,15 @@ export function SearchDialog({
   onClose,
   vaultId,
   onOpenNote,
+  initialQuery = "",
 }: {
   open: boolean;
   onClose: () => void;
   vaultId: string;
   onOpenNote: (path: string) => void;
+  initialQuery?: string;
 }) {
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(initialQuery);
   const [hits, setHits] = useState<Hit[]>([]);
   const [loading, setLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);

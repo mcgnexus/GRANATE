@@ -4,6 +4,22 @@ Bóveda de notas Markdown tipo Obsidian, en la web, guardada en **Neon Postgres*
 
 > Estado: MVP funcional. Ver [Limitaciones](#limitaciones-conocidas) antes de usarlo con datos críticos.
 
+## Estado de esta entrega
+
+- Proyecto creado en `C:\Users\Manuel Q\Proyectos\GRANATE`.
+- Base de datos **Neon** aprovisionada (proyecto `GRANATE`, Postgres 18) y esquema aplicado.
+- `.env.local` ya contiene `DATABASE_URL` y la configuración local (no se versiona).
+- Datos demo cargados: usuario **`demo@granate.local` / `granate123`** y bóveda **“Bóveda de ejemplo”**.
+- Sin claves de LLM todavía: el chat y las acciones devuelven un 400 controlado; la búsqueda
+  funciona por texto. Añade `OPENROUTER_API_KEY` y `GEMINI_API_KEY` en `.env.local` para activarlas.
+- Verificado contra Neon real: registro/login, bóvedas, notas, tags, backlinks, renombrado con
+  reescritura de enlaces, búsqueda, Bases, Canvas, export ZIP, papelera, CLI e importación de la
+  bóveda real de Obsidian (23 notas + adjunto, 0 enlaces sin resolver).
+
+> ⚠️ Antes de abrir el registro al público, borra el usuario demo y pon
+> `AUTO_VERIFY_EMAILS=false`. Hoy `ALLOW_OPEN_REGISTRATION=true` y la cuenta demo tiene
+> credenciales conocidas.
+
 ## Stack
 
 | Capa | Tecnología |

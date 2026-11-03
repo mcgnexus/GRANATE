@@ -71,6 +71,7 @@ export function Workspace({ vault }: { vault: VaultAccess }) {
   const [rightTab, setRightTab] = useState<"details" | "ai">("details");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [searchSeed, setSearchSeed] = useState("");
   const [graphOpen, setGraphOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -508,6 +509,7 @@ views:
                       key={tag.name}
                       type="button"
                       onClick={() => {
+                        setSearchSeed(tag.name);
                         setSearchOpen(true);
                       }}
                       className="chip hover:border-[var(--accent)]"
@@ -817,9 +819,11 @@ views:
       </div>
 
       <SearchDialog
+        key={searchSeed}
         open={searchOpen}
         onClose={() => setSearchOpen(false)}
         vaultId={vault.id}
+        initialQuery={searchSeed}
         onOpenNote={openByPath}
       />
 
