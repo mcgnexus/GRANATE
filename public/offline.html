@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sin conexión · GRANATE</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      body {
+        margin: 0;
+        min-height: 100dvh;
+        display: grid;
+        place-items: center;
+        background: #120f0e;
+        color: #ece4d9;
+        font-family: ui-sans-serif, system-ui, sans-serif;
+        text-align: center;
+        padding: 2rem;
+      }
+      .card {
+        max-width: 26rem;
+        border: 1px solid #352b27;
+        background: #1b1615;
+        border-radius: 16px;
+        padding: 2rem;
+      }
+      .mark {
+        display: grid;
+        place-items: center;
+        width: 44px;
+        height: 44px;
+        margin: 0 auto 1rem;
+        border-radius: 12px;
+        background: #b23a48;
+        font-weight: 700;
+        color: #fff;
+      }
+      h1 {
+        font-family: Georgia, serif;
+        font-size: 1.6rem;
+        margin: 0 0 0.6rem;
+      }
+      p {
+        color: #9a8b7d;
+        line-height: 1.6;
+        font-size: 0.9rem;
+        margin: 0;
+      }
+      button {
+        margin-top: 1.4rem;
+        border: 0;
+        border-radius: 9px;
+        padding: 0.65rem 1rem;
+        background: #b23a48;
+        color: #fff;
+        font: inherit;
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <div class="mark">G</div>
+      <h1>Sin conexión</h1>
+      <p>
+        GRANATE necesita conexión para leer y guardar tus notas en Neon. Vuelve a intentarlo cuando
+        recuperes la red.
+      </p>
+      <button type="button" onclick="location.reload()">Reintentar</button>
+    </div>
+  </body>
+</html>
