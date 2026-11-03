@@ -1,0 +1,423 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #120f0e;
+  --bg-soft: #171312;
+  --panel: #1b1615;
+  --panel-2: #221b19;
+  --panel-3: #2a211e;
+  --border: #352b27;
+  --border-soft: #2a221f;
+  --text: #ece4d9;
+  --text-soft: #c8bbad;
+  --muted: #9a8b7d;
+  --accent: #b23a48;
+  --accent-2: #d85d63;
+  --accent-soft: rgba(178, 58, 72, 0.16);
+  --gold: #c9a227;
+  --green: #7fae7a;
+  --blue: #6c9fd4;
+  --radius: 12px;
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+}
+
+[data-theme="light"] {
+  --bg: #f6f1e9;
+  --bg-soft: #efe8dd;
+  --panel: #fffaf2;
+  --panel-2: #f4ece0;
+  --panel-3: #ece1d2;
+  --border: #d8c8b5;
+  --border-soft: #e4d7c7;
+  --text: #2a211d;
+  --text-soft: #4c4038;
+  --muted: #7a6a5c;
+  --accent: #9c2b37;
+  --accent-2: #b23a48;
+  --accent-soft: rgba(156, 43, 55, 0.1);
+  --gold: #9a7b17;
+  --green: #4f7a4a;
+  --blue: #3d6f9e;
+}
+
+@theme inline {
+  --color-background: var(--bg);
+  --color-foreground: var(--text);
+  --color-panel: var(--panel);
+  --color-accent: var(--accent);
+  --color-muted: var(--muted);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--accent);
+  color: #fff;
+}
+
+a {
+  color: inherit;
+}
+
+.font-display {
+  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif;
+  letter-spacing: -0.03em;
+}
+
+.bg-grain {
+  background-image:
+    radial-gradient(circle at 12% 10%, rgba(178, 58, 72, 0.16), transparent 34%),
+    radial-gradient(circle at 88% 0%, rgba(201, 162, 39, 0.08), transparent 30%),
+    linear-gradient(160deg, var(--bg) 0%, var(--bg-soft) 52%, var(--bg) 100%);
+}
+
+.hairline {
+  border-color: var(--border);
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.input {
+  width: 100%;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 0.6rem 0.75rem;
+  color: var(--text);
+  outline: none;
+  font-size: 0.9rem;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.input::placeholder {
+  color: var(--muted);
+}
+
+.input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+  padding: 0.55rem 0.9rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+  white-space: nowrap;
+}
+
+.btn:hover {
+  background: var(--panel-3);
+  border-color: var(--muted);
+}
+
+.btn:active {
+  transform: translateY(1px);
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: linear-gradient(180deg, var(--accent-2), var(--accent));
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 8px 24px -12px rgba(178, 58, 72, 0.9);
+}
+
+.btn-primary:hover {
+  background: linear-gradient(180deg, #e06b70, var(--accent-2));
+  border-color: transparent;
+}
+
+.btn-ghost {
+  background: transparent;
+  border-color: transparent;
+}
+
+.btn-ghost:hover {
+  background: var(--panel-2);
+  border-color: var(--border);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text-soft);
+  border-radius: 999px;
+  padding: 0.18rem 0.55rem;
+  font-size: 0.72rem;
+}
+
+.scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+.scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.scrollbar::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 8px;
+}
+
+.kbd {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  padding: 0.1rem 0.35rem;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--muted);
+}
+
+/* ---------- Markdown preview ---------- */
+
+.prose-granate {
+  color: var(--text);
+  font-size: 0.95rem;
+  line-height: 1.7;
+  max-width: 46rem;
+}
+
+.prose-granate h1,
+.prose-granate h2,
+.prose-granate h3,
+.prose-granate h4 {
+  font-family: "Iowan Old Style", Georgia, serif;
+  letter-spacing: -0.02em;
+  margin: 1.6em 0 0.5em;
+  line-height: 1.2;
+}
+
+.prose-granate h1 {
+  font-size: 2rem;
+  color: var(--text);
+}
+
+.prose-granate h2 {
+  font-size: 1.5rem;
+  border-bottom: 1px solid var(--border-soft);
+  padding-bottom: 0.3rem;
+}
+
+.prose-granate h3 {
+  font-size: 1.18rem;
+  color: var(--text-soft);
+}
+
+.prose-granate p,
+.prose-granate ul,
+.prose-granate ol,
+.prose-granate blockquote,
+.prose-granate table {
+  margin: 0.85em 0;
+}
+
+.prose-granate ul,
+.prose-granate ol {
+  padding-left: 1.4rem;
+}
+
+.prose-granate li {
+  margin: 0.25em 0;
+}
+
+.prose-granate a {
+  color: var(--accent-2);
+  text-decoration: underline;
+  text-decoration-color: var(--accent-soft);
+  text-underline-offset: 3px;
+}
+
+.prose-granate a.wiki-link {
+  color: var(--gold);
+  text-decoration: none;
+  border-bottom: 1px dashed var(--gold);
+}
+
+.prose-granate blockquote {
+  border-left: 2px solid var(--accent);
+  background: var(--panel-2);
+  padding: 0.4rem 1rem;
+  color: var(--text-soft);
+  border-radius: 0 8px 8px 0;
+}
+
+.prose-granate code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  background: var(--panel-3);
+  padding: 0.12em 0.35em;
+  border-radius: 5px;
+}
+
+.prose-granate pre {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem;
+  overflow-x: auto;
+}
+
+.prose-granate pre code {
+  background: transparent;
+  padding: 0;
+  font-size: 0.82rem;
+}
+
+.prose-granate table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+}
+
+.prose-granate th,
+.prose-granate td {
+  border: 1px solid var(--border);
+  padding: 0.45rem 0.6rem;
+  text-align: left;
+}
+
+.prose-granate th {
+  background: var(--panel-2);
+}
+
+.prose-granate hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 1.6em 0;
+}
+
+.prose-granate img {
+  max-width: 100%;
+  border-radius: var(--radius);
+}
+
+/* ---------- CodeMirror ---------- */
+
+.cm-host .cm-editor {
+  height: 100%;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 0.94rem;
+}
+
+.cm-host .cm-scroller {
+  font-family: var(--font-sans);
+  line-height: 1.75;
+  padding: 1.5rem 0;
+}
+
+.cm-host .cm-content {
+  padding: 0 2rem;
+  max-width: 52rem;
+  margin: 0 auto;
+}
+
+.cm-host .cm-gutters {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+}
+
+.cm-host .cm-activeLine {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.cm-host .cm-focused {
+  outline: none;
+}
+
+.cm-host .cm-line {
+  padding-left: 0.25rem;
+}
+
+/* ---------- React Flow ---------- */
+
+.canvas-shell .react-flow__background {
+  background: var(--bg);
+}
+
+.canvas-shell .react-flow__node {
+  font-family: var(--font-sans);
+  font-size: 0.8rem;
+  color: var(--text);
+}
+
+.canvas-shell .react-flow__node-default,
+.canvas-shell .react-flow__node-text,
+.canvas-shell .react-flow__node-file {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.6rem;
+  width: auto;
+}
+
+.canvas-shell .react-flow__node-group {
+  background: rgba(178, 58, 72, 0.06);
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+}
+
+.canvas-shell .react-flow__edge-path {
+  stroke: var(--muted);
+  stroke-width: 1.5;
+}
+
+.canvas-shell .react-flow__controls {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.canvas-shell .react-flow__controls button {
+  background: var(--panel-2);
+  color: var(--text);
+  border-bottom: 1px solid var(--border);
+}
+
+.canvas-shell .react-flow__minimap {
+  background: var(--panel-2);
+}

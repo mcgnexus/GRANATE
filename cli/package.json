@@ -1,0 +1,13 @@
+{
+  "name": "@granate/cli",
+  "version": "0.1.0",
+  "description": "CLI de GRANATE: consulta y edita tu bóveda desde cualquier terminal.",
+  "type": "module",
+  "bin": {
+    "granate": "./granate.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT"
+}
