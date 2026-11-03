@@ -284,6 +284,7 @@ a {
   border-color: var(--border);
 }
 
+@layer components {
 .panel {
   background: var(--panel);
   border: 1px solid var(--border);
@@ -399,6 +400,7 @@ a {
   border: 1px solid var(--border);
   background: var(--panel-2);
   color: var(--muted);
+}
 }
 
 /* ---------- Markdown preview ---------- */
