@@ -210,6 +210,12 @@ configurado, en Vercel Blob como alternativa o en Postgres (máximo 25 MB). El b
 privado y las descargas usan URLs firmadas. El cron diario de `vercel.json` conserva las 7
 últimas copias por bóveda. Protege el endpoint con `CRON_SECRET`.
 
+Para mover adjuntos y backups que ya estén en Postgres a B2:
+
+```bash
+npx tsx scripts/migrate-storage-b2.ts
+```
+
 ## Despliegue en Vercel
 
 1. Sube el repo a GitHub e impórtalo en Vercel.

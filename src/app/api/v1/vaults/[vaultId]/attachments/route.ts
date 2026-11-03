@@ -1,15 +1,15 @@
 import type { NextRequest } from "next/server";
 import { and, desc, eq, sql } from "drizzle-orm";
-import { del, put } from "@vercel/blob";
+import { put } from "@vercel/blob";
 import { db } from "@/lib/db";
 import { attachments } from "@/lib/db/schema";
 import { withVault, apiError } from "@/lib/http";
 import { guessMime } from "@/lib/import-export";
 import { contentHash } from "@/lib/auth/password";
+import { removeStoredRef } from "@/lib/storage-cleanup";
 import {
   attachmentKey,
   b2KeyFromRef,
-  deleteB2,
   isB2Ref,
   putB2,
   signedB2Url,
@@ -32,18 +32,6 @@ function publicUrl(vaultId: string, row: { id: string; blobUrl: string | null })
 function storageOf(blobUrl: string | null) {
   if (!blobUrl) return "postgres";
   return isB2Ref(blobUrl) ? "b2" : "vercel";
-}
-
-async function removeStoredRef(ref: string | null | undefined) {
-  if (!ref) return;
-  if (isB2Ref(ref)) {
-    await deleteB2(b2KeyFromRef(ref)).catch(() => undefined);
-    return;
-  }
-  const token = process.env.BLOB_READ_WRITE_TOKEN;
-  if (token && /^https?:\/\//.test(ref)) {
-    await del(ref, { token }).catch(() => undefined);
-  }
 }
 
 export async function GET(request: NextRequest, ctx: Ctx) {

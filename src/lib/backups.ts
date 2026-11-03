@@ -1,33 +1,19 @@
 import { and, count, desc, eq, isNull, lt } from "drizzle-orm";
-import { del, put } from "@vercel/blob";
+import { put } from "@vercel/blob";
 import { db } from "@/lib/db";
 import { backups, notes } from "@/lib/db/schema";
 import { exportVaultZip } from "@/lib/exporter";
 import { ApiError } from "@/lib/api-error";
 import { slugify } from "@/lib/utils";
+import { removeStoredRef } from "@/lib/storage-cleanup";
 import {
-  b2KeyFromRef,
   backupKey,
-  deleteB2,
-  isB2Ref,
   putB2,
   storageProvider,
 } from "@/lib/storage";
 
 export function hasExternalStorage() {
   return storageProvider() !== "postgres";
-}
-
-async function removeStoredRef(ref: string | null | undefined) {
-  if (!ref) return;
-  if (isB2Ref(ref)) {
-    await deleteB2(b2KeyFromRef(ref)).catch(() => undefined);
-    return;
-  }
-  const token = process.env.BLOB_READ_WRITE_TOKEN;
-  if (token && /^https?:\/\//.test(ref)) {
-    await del(ref, { token }).catch(() => undefined);
-  }
 }
 
 export async function listBackups(vaultId: string) {

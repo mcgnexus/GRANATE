@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { vaults } from "@/lib/db/schema";
 import { withVault, apiError } from "@/lib/http";
+import { deleteVaultStorage } from "@/lib/storage-cleanup";
 
 type Ctx = { params: Promise<{ vaultId: string }> };
 
@@ -46,6 +47,7 @@ export async function DELETE(request: NextRequest, ctx: Ctx) {
     if (access.vault.role !== "owner") {
       return Response.json({ error: "Solo el propietario puede borrar la bóveda" }, { status: 403 });
     }
+    await deleteVaultStorage(vaultId);
     await db.delete(vaults).where(eq(vaults.id, vaultId));
     return Response.json({ ok: true });
   } catch (error) {
