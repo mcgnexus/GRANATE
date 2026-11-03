@@ -7,7 +7,17 @@ import { ArrowRight, CheckCircle2, Loader2 } from "lucide-react";
 
 type Mode = "login" | "register";
 
-export function AuthForm({ mode, notice }: { mode: Mode; notice?: string }) {
+export function AuthForm({
+  mode,
+  notice,
+  googleEnabled = false,
+  registrationOpen = true,
+}: {
+  mode: Mode;
+  notice?: string;
+  googleEnabled?: boolean;
+  registrationOpen?: boolean;
+}) {
   const router = useRouter();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -126,27 +136,40 @@ export function AuthForm({ mode, notice }: { mode: Mode; notice?: string }) {
           </button>
         </form>
 
-        <div className="my-5 flex items-center gap-3 text-[10px] uppercase tracking-[0.2em] text-[var(--muted)]">
-          <span className="h-px flex-1 bg-[var(--border)]" />o<span className="h-px flex-1 bg-[var(--border)]" />
-        </div>
-
-        <a href="/api/auth/google" className="btn w-full py-2.5">
-          <GoogleMark /> Continuar con Google
-        </a>
+        {googleEnabled ? (
+          <>
+            <div className="my-5 flex items-center gap-3 text-[10px] uppercase tracking-[0.2em] text-[var(--muted)]">
+              <span className="h-px flex-1 bg-[var(--border)]" />o
+              <span className="h-px flex-1 bg-[var(--border)]" />
+            </div>
+            <a href="/api/auth/google" className="btn w-full py-2.5">
+              <GoogleMark /> Continuar con Google
+            </a>
+          </>
+        ) : null}
 
         <p className="mt-6 text-center text-xs text-[var(--muted)]">
-          {mode === "login" ? (
-            <>
-              ¿No tienes cuenta?{" "}
-              <Link href="/register" className="text-[var(--accent-2)] hover:underline">
-                Crear una
-              </Link>
-            </>
+          {registrationOpen ? (
+            mode === "login" ? (
+              <>
+                ¿No tienes cuenta?{" "}
+                <Link href="/register" className="text-[var(--accent-2)] hover:underline">
+                  Crear una
+                </Link>
+              </>
+            ) : (
+              <>
+                ¿Ya tienes cuenta?{" "}
+                <Link href="/login" className="text-[var(--accent-2)] hover:underline">
+                  Entrar
+                </Link>
+              </>
+            )
           ) : (
             <>
-              ¿Ya tienes cuenta?{" "}
+              Acceso restringido a la cuenta propietaria.{" "}
               <Link href="/login" className="text-[var(--accent-2)] hover:underline">
-                Entrar
+                Volver
               </Link>
             </>
           )}

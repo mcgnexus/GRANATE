@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { AuthForm } from "@/components/auth/auth-form";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
+import { config } from "@/lib/config";
 
 export const metadata: Metadata = { title: "Entrar" };
 
@@ -30,7 +31,12 @@ export default async function LoginPage({
       <div className="absolute right-5 top-5">
         <ThemeToggle />
       </div>
-      <AuthForm mode="login" notice={notice ?? error} />
+      <AuthForm
+        mode="login"
+        notice={notice ?? error}
+        googleEnabled={config.googleEnabled}
+        registrationOpen={config.openRegistration}
+      />
     </main>
   );
 }

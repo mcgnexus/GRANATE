@@ -9,16 +9,13 @@ Bóveda de notas Markdown tipo Obsidian, en la web, guardada en **Neon Postgres*
 - Proyecto creado en `C:\Users\Manuel Q\Proyectos\GRANATE`.
 - Base de datos **Neon** aprovisionada (proyecto `GRANATE`, Postgres 18) y esquema aplicado.
 - `.env.local` ya contiene `DATABASE_URL` y la configuración local (no se versiona).
-- Datos demo cargados: usuario **`demo@granate.local` / `granate123`** y bóveda **“Bóveda de ejemplo”**.
+- **Registro público cerrado**: es una app de uso personal. La cuenta se crea una sola vez con
+  `npm run user:create` (email + contraseña que elijas tú).
 - Sin claves de LLM todavía: el chat y las acciones devuelven un 400 controlado; la búsqueda
   funciona por texto. Añade `OPENROUTER_API_KEY` y `GEMINI_API_KEY` en `.env.local` para activarlas.
 - Verificado contra Neon real: registro/login, bóvedas, notas, tags, backlinks, renombrado con
   reescritura de enlaces, búsqueda, Bases, Canvas, export ZIP, papelera, CLI e importación de la
   bóveda real de Obsidian (23 notas + adjunto, 0 enlaces sin resolver).
-
-> ⚠️ Antes de abrir el registro al público, borra el usuario demo y pon
-> `AUTO_VERIFY_EMAILS=false`. Hoy `ALLOW_OPEN_REGISTRATION=true` y la cuenta demo tiene
-> credenciales conocidas.
 
 ## Stack
 
@@ -68,6 +65,21 @@ Bóveda de notas Markdown tipo Obsidian, en la web, guardada en **Neon Postgres*
    ```
 
 6. Abre `http://localhost:3000`, crea una cuenta y una bóveda. Si `AUTO_VERIFY_EMAILS=true` no necesitas verificar el email en local.
+
+### Crear tu cuenta (uso personal)
+
+El registro público está cerrado (`ALLOW_OPEN_REGISTRATION=false`). Crea la única cuenta desde
+la terminal:
+
+```powershell
+npm run user:create -- --email tu@email.com --name "Tu nombre"
+```
+
+Te pedirá la contraseña dos veces sin mostrarla. El script marca el email como verificado y crea
+la bóveda **“Mi bóveda”** si todavía no tienes ninguna. Si el usuario ya existe, actualiza su
+contraseña (útil como reseteo).
+
+Para cambiar la contraseña más adelante, vuelve a ejecutar el mismo comando.
 
 ### Variables de entorno
 

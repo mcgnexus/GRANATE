@@ -29,11 +29,8 @@ export default async function Home() {
         </div>
         <nav className="flex items-center gap-2">
           <ThemeToggle />
-          <Link href="/login" className="btn btn-ghost">
+          <Link href="/login" className="btn btn-primary">
             Entrar
-          </Link>
-          <Link href="/register" className="btn btn-primary">
-            Crear cuenta
           </Link>
         </nav>
       </header>
@@ -54,15 +51,12 @@ export default async function Home() {
             que revisa, ordena, indexa y responde sobre tus documentos.
           </p>
           <div className="mt-9 flex flex-wrap items-center gap-3">
-            <Link href="/register" className="btn btn-primary px-5 py-3 text-base">
-              Empezar gratis <ArrowRight size={17} />
-            </Link>
-            <Link href="/login" className="btn px-5 py-3 text-base">
-              Ya tengo cuenta
+            <Link href="/login" className="btn btn-primary px-5 py-3 text-base">
+              Entrar en mi bóveda <ArrowRight size={17} />
             </Link>
           </div>
           <p className="mt-4 flex items-center gap-2 text-xs text-[var(--muted)]">
-            <Lock size={13} /> Login con email o Google · registro abierto
+            <Lock size={13} /> Acceso personal con email y contraseña
           </p>
         </div>
 
