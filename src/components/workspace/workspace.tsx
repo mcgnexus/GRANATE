@@ -22,7 +22,8 @@ import {
   Eye,
 } from "lucide-react";
 import { FileTree, type TreeBase, type TreeCanvas, type TreeNote } from "./file-tree";
-import { MarkdownEditor } from "./markdown-editor";
+import { MarkdownEditor, type MarkdownEditorHandle } from "./markdown-editor";
+import { EditorToolbar } from "./editor-toolbar";
 import { MarkdownPreview } from "./markdown-preview";
 import { SearchDialog } from "./search-dialog";
 import { GraphView } from "./graph-view";
@@ -96,6 +97,7 @@ export function Workspace({ vault }: { vault: VaultAccess }) {
   const latest = useRef({ content, activeId: active?.id, activeContent: active?.content });
   latest.current = { content, activeId: active?.id, activeContent: active?.content };
   const saveTimer = useRef<number | undefined>(undefined);
+  const editorRef = useRef<MarkdownEditorHandle>(null);
 
   const canWrite = vault.role !== "viewer";
 
@@ -680,14 +682,29 @@ views:
                 </div>
               </div>
 
-              <div className="min-h-0 flex-1">
+              <div className="flex min-h-0 flex-1 flex-col">
                 {mode === "edit" ? (
-                  <MarkdownEditor
-                    value={content}
-                    onChange={setContent}
-                    readOnly={!canWrite}
-                    onSave={() => void saveNow()}
-                  />
+                  <>
+                    {canWrite ? (
+                      <EditorToolbar
+                        editorRef={editorRef}
+                        vaultId={vault.id}
+                        notes={tree.notes}
+                        tags={tree.tags}
+                        activeNoteId={active.id}
+                        onToast={showToast}
+                      />
+                    ) : null}
+                    <div className="min-h-0 flex-1">
+                      <MarkdownEditor
+                        ref={editorRef}
+                        value={content}
+                        onChange={setContent}
+                        readOnly={!canWrite}
+                        onSave={() => void saveNow()}
+                      />
+                    </div>
+                  </>
                 ) : (
                   <div className="scrollbar h-full overflow-y-auto">
                     <MarkdownPreview content={content} vaultId={vault.id} onOpenNote={openByPath} />

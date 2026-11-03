@@ -526,6 +526,11 @@ a {
   border-radius: var(--radius);
 }
 
+.prose-granate u {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 /* ---------- CodeMirror ---------- */
 
 .cm-host .cm-editor {

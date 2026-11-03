@@ -2,8 +2,19 @@
 
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import rehypeRaw from "rehype-raw";
+import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 
 const IMAGE_RE = /\.(png|jpg|jpeg|gif|webp|svg|avif|bmp)$/i;
+
+const schema = {
+  ...defaultSchema,
+  tagNames: Array.from(new Set([...(defaultSchema.tagNames ?? []), "u"])),
+  protocols: {
+    ...defaultSchema.protocols,
+    href: Array.from(new Set([...(defaultSchema.protocols?.href ?? []), "granate"])),
+  },
+};
 
 function wikilinksToMarkdown(content: string, vaultId: string): string {
   return content.replace(/(!)?\[\[([^\]]+?)\]\]/g, (full, embed: string | undefined, inner: string) => {
@@ -63,7 +74,12 @@ export function MarkdownPreview({
 
   return (
     <div className="prose-granate px-6 py-8 sm:px-10">
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        rehypePlugins={[rehypeRaw, [rehypeSanitize, schema]]}
+        components={components}
+        urlTransform={(url) => url}
+      >
         {markdown || "_Nota vacía._"}
       </ReactMarkdown>
     </div>

@@ -60,7 +60,8 @@ export async function PATCH(request: NextRequest, ctx: Ctx) {
       }
     });
 
-    return Response.json({ note });
+    const detail = await getNote(vaultId, note.id);
+    return Response.json({ note: detail ?? note });
   } catch (error) {
     return apiError(error);
   }
