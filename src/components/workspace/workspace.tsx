@@ -110,7 +110,11 @@ export function Workspace({ vault }: { vault: VaultAccess }) {
     ]);
     if (treeResponse.ok) {
       const data = (await treeResponse.json()) as TreeData;
-      setTree({ notes: data.notes, folders: data.folders, tags: data.tags });
+      setTree({
+        notes: data.notes ?? [],
+        folders: data.folders ?? [],
+        tags: data.tags ?? [],
+      });
     }
     if (canvasResponse.ok) {
       const data = (await canvasResponse.json()) as { canvases: TreeCanvas[] };
@@ -150,8 +154,17 @@ export function Workspace({ vault }: { vault: VaultAccess }) {
       return;
     }
     const data = (await response.json()) as { note: NoteDetail };
-    setActive(data.note);
-    setContent(data.note.content);
+    const detail: NoteDetail = {
+      ...data.note,
+      backlinks: data.note.backlinks ?? [],
+      outgoing: data.note.outgoing ?? [],
+      tags: data.note.tags ?? [],
+      outline: data.note.outline ?? [],
+      frontmatter: data.note.frontmatter ?? {},
+      content: data.note.content ?? "",
+    };
+    setActive(detail);
+    setContent(detail.content);
     setView("note");
     setMode("edit");
     setSaveState("idle");
@@ -498,7 +511,7 @@ views:
               onNewBase={createBase}
             />
 
-            {tree.tags.length > 0 ? (
+            {(tree.tags?.length ?? 0) > 0 ? (
               <div className="border-t border-[var(--border)] p-3">
                 <div className="mb-2 text-[10px] uppercase tracking-[0.18em] text-[var(--muted)]">
                   Etiquetas
@@ -634,8 +647,8 @@ views:
           )}
 
           <footer className="flex h-7 shrink-0 items-center gap-3 border-t border-[var(--border)] bg-[var(--panel)] px-3 text-[10px] text-[var(--muted)]">
-            <span>{tree.notes.length} notas</span>
-            <span>{tree.tags.length} etiquetas</span>
+            <span>{tree.notes?.length ?? 0} notas</span>
+            <span>{tree.tags?.length ?? 0} etiquetas</span>
             <span className="ml-auto flex items-center gap-1.5">
               <span className="h-1.5 w-1.5 rounded-full bg-[var(--green)]" /> Neon
             </span>
@@ -689,11 +702,11 @@ views:
                       <h3 className="mb-2 text-[10px] uppercase tracking-[0.16em] text-[var(--muted)]">
                         Propiedades
                       </h3>
-                      {Object.entries(active.frontmatter).length === 0 ? (
+                      {Object.entries(active.frontmatter ?? {}).length === 0 ? (
                         <p className="text-[11px] text-[var(--muted)]">Sin frontmatter.</p>
                       ) : (
                         <dl className="space-y-1.5">
-                          {Object.entries(active.frontmatter).map(([key, value]) => (
+                          {Object.entries(active.frontmatter ?? {}).map(([key, value]) => (
                             <div key={key} className="flex gap-2">
                               <dt className="w-20 shrink-0 truncate text-[var(--muted)]">{key}</dt>
                               <dd className="min-w-0 flex-1 break-words text-[var(--text-soft)]">
@@ -722,10 +735,10 @@ views:
 
                     <section>
                       <h3 className="mb-2 text-[10px] uppercase tracking-[0.16em] text-[var(--muted)]">
-                        Backlinks · {active.backlinks.length}
+                        Backlinks · {active.backlinks?.length ?? 0}
                       </h3>
                       <div className="space-y-1">
-                        {active.backlinks.map((backlink) => (
+                        {active.backlinks?.map((backlink) => (
                           <button
                             key={backlink.id}
                             type="button"
@@ -735,7 +748,7 @@ views:
                             {backlink.title}
                           </button>
                         ))}
-                        {active.backlinks.length === 0 ? (
+                        {(active.backlinks?.length ?? 0) === 0 ? (
                           <p className="text-[11px] text-[var(--muted)]">Ninguna nota la enlaza.</p>
                         ) : null}
                       </div>
@@ -743,10 +756,10 @@ views:
 
                     <section>
                       <h3 className="mb-2 text-[10px] uppercase tracking-[0.16em] text-[var(--muted)]">
-                        Enlaces salientes · {active.outgoing.length}
+                        Enlaces salientes · {active.outgoing?.length ?? 0}
                       </h3>
                       <div className="space-y-1">
-                        {active.outgoing.map((link, index) => (
+                        {(active.outgoing ?? []).map((link, index) => (
                           <button
                             key={`${link.rawTarget}-${index}`}
                             type="button"
@@ -756,7 +769,7 @@ views:
                             {link.rawTarget}
                           </button>
                         ))}
-                        {active.outgoing.length === 0 ? (
+                        {(active.outgoing?.length ?? 0) === 0 ? (
                           <p className="text-[11px] text-[var(--muted)]">Sin enlaces salientes.</p>
                         ) : null}
                       </div>
@@ -767,7 +780,7 @@ views:
                         Índice
                       </h3>
                       <div className="space-y-0.5">
-                        {active.outline.map((item, index) => (
+                        {(active.outline ?? []).map((item, index) => (
                           <div
                             key={index}
                             className="truncate text-[11px] text-[var(--text-soft)]"
@@ -776,7 +789,7 @@ views:
                             {item.text}
                           </div>
                         ))}
-                        {active.outline.length === 0 ? (
+                        {(active.outline?.length ?? 0) === 0 ? (
                           <p className="text-[11px] text-[var(--muted)]">Sin encabezados.</p>
                         ) : null}
                       </div>
@@ -885,7 +898,7 @@ views:
         subtitle={active?.path}
       >
         <div className="divide-y divide-[var(--border-soft)]">
-          {versions.length === 0 ? (
+          {versions?.length === 0 ? (
             <p className="p-5 text-xs text-[var(--muted)]">Sin versiones todavía.</p>
           ) : (
             versions.map((version) => (

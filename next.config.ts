@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  deploymentId: process.env.VERCEL_DEPLOYMENT_ID,
+  deploymentId: process.env.VERCEL_GIT_COMMIT_SHA ?? process.env.VERCEL_DEPLOYMENT_ID,
   experimental: {
     serverActions: {
       bodySizeLimit: "8mb",
