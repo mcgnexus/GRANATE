@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Copy, Download, KeyRound, Loader2, RefreshCw, Trash2 } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
+import { PalettePicker } from "@/components/ui/palette-picker";
 
 type Token = {
   id: string;
@@ -109,6 +110,13 @@ export function SettingsModal({
           <h3 className="text-sm font-medium">Apariencia</h3>
           <div className="mt-2 flex items-center gap-3 text-xs text-[var(--muted)]">
             Tema de la interfaz <ThemeToggle />
+          </div>
+          <div className="mt-4">
+            <div className="mb-2 text-[11px] text-[var(--muted)]">Paleta de colores</div>
+            <PalettePicker />
+            <p className="mt-2 text-[10px] leading-4 text-[var(--muted)]">
+              Se guarda en este navegador. Se aplica igual en modo claro y oscuro.
+            </p>
           </div>
         </section>
 

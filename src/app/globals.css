@@ -41,6 +41,198 @@
   --blue: #3d6f9e;
 }
 
+/* ---------- Paletas de color ---------- */
+
+html[data-palette="onice"] {
+  --bg: #0d0d0f;
+  --bg-soft: #121216;
+  --panel: #151518;
+  --panel-2: #1c1c21;
+  --panel-3: #24242b;
+  --border: #2e2e37;
+  --border-soft: #25252d;
+  --text: #ececf1;
+  --text-soft: #c4c4d0;
+  --muted: #8d8d9a;
+  --accent: #5b6cff;
+  --accent-2: #8a96ff;
+  --accent-soft: rgba(91, 108, 255, 0.18);
+  --gold: #d4b45a;
+  --green: #7fae9a;
+  --blue: #7f9bff;
+}
+
+html[data-theme="light"][data-palette="onice"] {
+  --bg: #f4f4f6;
+  --bg-soft: #ececf0;
+  --panel: #ffffff;
+  --panel-2: #f0f0f4;
+  --panel-3: #e4e4ea;
+  --border: #d2d2da;
+  --border-soft: #e2e2e8;
+  --text: #1c1c22;
+  --text-soft: #44444e;
+  --muted: #70707e;
+  --accent: #4652d8;
+  --accent-2: #5b6cff;
+  --accent-soft: rgba(70, 82, 216, 0.1);
+  --gold: #a5811f;
+  --green: #4f7a63;
+  --blue: #3d55a8;
+}
+
+html[data-palette="bosque"] {
+  --bg: #0c1310;
+  --bg-soft: #101b16;
+  --panel: #121c17;
+  --panel-2: #18261f;
+  --panel-3: #1f3128;
+  --border: #2a4034;
+  --border-soft: #213329;
+  --text: #e4efe7;
+  --text-soft: #b7cbbd;
+  --muted: #7f9a88;
+  --accent: #3f8f5f;
+  --accent-2: #63b07f;
+  --accent-soft: rgba(63, 143, 95, 0.18);
+  --gold: #c9a227;
+  --green: #63b07f;
+  --blue: #6f9fc4;
+}
+
+html[data-theme="light"][data-palette="bosque"] {
+  --bg: #f2f6f1;
+  --bg-soft: #e9f0e6;
+  --panel: #fbfdf9;
+  --panel-2: #edf3e9;
+  --panel-3: #dce7d8;
+  --border: #c8d6c3;
+  --border-soft: #dbe6d7;
+  --text: #1c2a20;
+  --text-soft: #415846;
+  --muted: #6d8573;
+  --accent: #2f7a4c;
+  --accent-2: #3f8f5f;
+  --accent-soft: rgba(47, 122, 76, 0.1);
+  --gold: #8a6d12;
+  --green: #3f7a55;
+  --blue: #4a7f9e;
+}
+
+html[data-palette="oceano"] {
+  --bg: #0b1220;
+  --bg-soft: #0f1a2b;
+  --panel: #121f33;
+  --panel-2: #17263d;
+  --panel-3: #1e304a;
+  --border: #263a55;
+  --border-soft: #1d2f47;
+  --text: #e6edf7;
+  --text-soft: #b9c8dc;
+  --muted: #7f93ad;
+  --accent: #2f7fd8;
+  --accent-2: #56a7f5;
+  --accent-soft: rgba(47, 127, 216, 0.18);
+  --gold: #d9a441;
+  --green: #6fbf8f;
+  --blue: #6fa8ff;
+}
+
+html[data-theme="light"][data-palette="oceano"] {
+  --bg: #eef5fb;
+  --bg-soft: #e6f0f9;
+  --panel: #f9fcff;
+  --panel-2: #e9f2fa;
+  --panel-3: #d3e4f3;
+  --border: #bfd4e6;
+  --border-soft: #d5e4f1;
+  --text: #102235;
+  --text-soft: #3b556e;
+  --muted: #67819a;
+  --accent: #1f6fb8;
+  --accent-2: #2f8fe0;
+  --accent-soft: rgba(31, 111, 184, 0.1);
+  --gold: #b8860b;
+  --green: #3f7a55;
+  --blue: #1f6fb8;
+}
+
+html[data-palette="ambar"] {
+  --bg: #14100b;
+  --bg-soft: #19140e;
+  --panel: #1d1710;
+  --panel-2: #251d14;
+  --panel-3: #2f2519;
+  --border: #3e3222;
+  --border-soft: #312719;
+  --text: #f0e6d6;
+  --text-soft: #d0bfa6;
+  --muted: #9e8a70;
+  --accent: #b8791f;
+  --accent-2: #d99a3a;
+  --accent-soft: rgba(184, 121, 31, 0.18);
+  --gold: #e0b34a;
+  --green: #8aa86f;
+  --blue: #7f9ab8;
+}
+
+html[data-theme="light"][data-palette="ambar"] {
+  --bg: #f8f2e7;
+  --bg-soft: #f2e8d7;
+  --panel: #fffaf0;
+  --panel-2: #f6eddc;
+  --panel-3: #e9dcc6;
+  --border: #d8c7ab;
+  --border-soft: #e6d8c2;
+  --text: #2e2418;
+  --text-soft: #574634;
+  --muted: #857058;
+  --accent: #9a6415;
+  --accent-2: #b8791f;
+  --accent-soft: rgba(154, 100, 21, 0.1);
+  --gold: #8a6d12;
+  --green: #5f7a46;
+  --blue: #5a7290;
+}
+
+html[data-palette="lavanda"] {
+  --bg: #100d16;
+  --bg-soft: #14101c;
+  --panel: #171320;
+  --panel-2: #1e192a;
+  --panel-3: #272035;
+  --border: #362c49;
+  --border-soft: #2a2237;
+  --text: #ece7f5;
+  --text-soft: #c8bfda;
+  --muted: #958aa8;
+  --accent: #7c5cbf;
+  --accent-2: #9d7ee0;
+  --accent-soft: rgba(124, 92, 191, 0.2);
+  --gold: #d4b45a;
+  --green: #8aa87f;
+  --blue: #8f9fd4;
+}
+
+html[data-theme="light"][data-palette="lavanda"] {
+  --bg: #f5f1fa;
+  --bg-soft: #efe8f8;
+  --panel: #fdfbff;
+  --panel-2: #f2ecfa;
+  --panel-3: #e5dcf1;
+  --border: #d3c6e5;
+  --border-soft: #e6dcf2;
+  --text: #241d31;
+  --text-soft: #4d4162;
+  --muted: #786a8d;
+  --accent: #6746a8;
+  --accent-2: #7c5cbf;
+  --accent-soft: rgba(103, 70, 168, 0.1);
+  --gold: #9a7b17;
+  --green: #5f7a55;
+  --blue: #5f6fa8;
+}
+
 @theme inline {
   --color-background: var(--bg);
   --color-foreground: var(--text);
