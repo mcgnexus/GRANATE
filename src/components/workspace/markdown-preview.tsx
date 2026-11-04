@@ -2,14 +2,31 @@
 
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
+import rehypeKatex from "rehype-katex";
+import "katex/dist/katex.min.css";
+import { hideComments } from "@/lib/markdown/comments";
 
 const IMAGE_RE = /\.(png|jpg|jpeg|gif|webp|svg|avif|bmp)$/i;
 
+/**
+ * El sanitizador corre ANTES de KaTeX (que genera markup de confianza) y permite
+ * `mark`/`span` con clases de color para los resaltados y textos coloreados que
+ * inserta el editor. No se permite `style`, así que no hay vía de XSS por CSS.
+ */
 const schema = {
   ...defaultSchema,
-  tagNames: Array.from(new Set([...(defaultSchema.tagNames ?? []), "u"])),
+  tagNames: Array.from(new Set([...(defaultSchema.tagNames ?? []), "u", "mark", "span"])),
+  attributes: {
+    ...defaultSchema.attributes,
+    // El schema base solo permite clases language-* en <code>; sin esto,
+    // rehype-katex pierde math-display y renderiza los bloques $$…$$ como inline.
+    code: [...(defaultSchema.attributes?.code ?? []), ["className", /^math-/]],
+    mark: [...(defaultSchema.attributes?.mark ?? []), "className"],
+    span: [...(defaultSchema.attributes?.span ?? []), "className"],
+  },
   protocols: {
     ...defaultSchema.protocols,
     href: Array.from(new Set([...(defaultSchema.protocols?.href ?? []), "granate"])),
@@ -46,7 +63,7 @@ export function MarkdownPreview({
   attachmentUrl?: (target: string) => string;
 }) {
   const body = content.replace(/^---[\s\S]*?---\s*/, "");
-  const markdown = wikilinksToMarkdown(body, vaultId, attachmentUrl);
+  const markdown = wikilinksToMarkdown(hideComments(body), vaultId, attachmentUrl);
 
   const components: Components = {
     a: ({ href, children, className }) => {
@@ -84,8 +101,9 @@ export function MarkdownPreview({
   return (
     <div className="prose-granate px-6 py-8 sm:px-10">
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        rehypePlugins={[rehypeRaw, [rehypeSanitize, schema]]}
+        remarkPlugins={[remarkGfm, remarkMath]}
+        // Sanitiza primero el HTML del usuario; KaTeX después añade su markup de confianza.
+        rehypePlugins={[rehypeRaw, [rehypeSanitize, schema], rehypeKatex]}
         components={components}
         urlTransform={(url) => url}
       >

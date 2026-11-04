@@ -563,6 +563,88 @@ body {
   text-underline-offset: 3px;
 }
 
+/* Resaltados de color (==texto== no nativo; el editor inserta <mark class="hl-*">) */
+
+.prose-granate mark {
+  background: rgba(234, 179, 8, 0.4);
+  color: inherit;
+  padding: 0.05em 0.25em;
+  border-radius: 4px;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
+.prose-granate mark.hl-green {
+  background: rgba(34, 197, 94, 0.32);
+}
+
+.prose-granate mark.hl-red {
+  background: rgba(239, 68, 68, 0.32);
+}
+
+.prose-granate mark.hl-blue {
+  background: rgba(59, 130, 246, 0.32);
+}
+
+.prose-granate mark.hl-purple {
+  background: rgba(168, 85, 247, 0.32);
+}
+
+/* Texto de color (el editor inserta <span class="tx-*">) */
+
+.prose-granate .tx-red {
+  color: #f87171;
+}
+
+.prose-granate .tx-green {
+  color: #4ade80;
+}
+
+.prose-granate .tx-blue {
+  color: #60a5fa;
+}
+
+.prose-granate .tx-purple {
+  color: #c084fc;
+}
+
+.prose-granate .tx-orange {
+  color: #fb923c;
+}
+
+[data-theme="light"] .prose-granate .tx-red {
+  color: #b91c1c;
+}
+
+[data-theme="light"] .prose-granate .tx-green {
+  color: #15803d;
+}
+
+[data-theme="light"] .prose-granate .tx-blue {
+  color: #1d4ed8;
+}
+
+[data-theme="light"] .prose-granate .tx-purple {
+  color: #7e22ce;
+}
+
+[data-theme="light"] .prose-granate .tx-orange {
+  color: #c2410c;
+}
+
+/* Fórmulas LaTeX (KaTeX) */
+
+.prose-granate .katex {
+  font-size: 1.05em;
+}
+
+.prose-granate .katex-display {
+  margin: 1em 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.25rem 0;
+}
+
 /* ---------- CodeMirror ---------- */
 
 .cm-host .cm-editor {

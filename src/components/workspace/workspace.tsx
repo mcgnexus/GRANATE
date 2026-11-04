@@ -46,6 +46,7 @@ import { PreferencesSync } from "@/components/ui/preferences-sync";
 import { Modal } from "@/components/ui/modal";
 import { ACTION_LABELS, type NoteAction } from "@/lib/ai/actions";
 import type { VaultAccess } from "@/lib/auth/api";
+import { findHeadingSection, removeSection, suggestNoteName } from "@/lib/markdown/formatting";
 import { renderTemplate, todayPath, vaultTemplateSettings } from "@/lib/templates";
 
 type NoteDetail = {
@@ -333,6 +334,58 @@ export function Workspace({ vault }: { vault: VaultAccess }) {
     setNewNoteTemplate("");
     await loadTree();
     await openNote({ id: data.note.id, path: data.note.path, title: data.note.path });
+  }
+
+  /**
+   * Extrae una sección de la nota activa a una nota nueva en la misma carpeta:
+   * guarda la nota actual sin la sección, crea la nota extraída y la abre.
+   */
+  async function extractSection(section: { title: string; body: string; anchor: number }) {
+    if (!active || !canWrite) return;
+    const doc = content;
+    const found = findHeadingSection(doc, Math.min(section.anchor, doc.length));
+    if (!found) {
+      showToast("La sección cambió, inténtalo de nuevo");
+      return;
+    }
+    const body = doc.slice(found.sectionStart, found.sectionEnd).trim();
+    if (!body) {
+      showToast("La sección está vacía");
+      return;
+    }
+
+    const folder = active.path.includes("/")
+      ? active.path.slice(0, active.path.lastIndexOf("/") + 1)
+      : "";
+    const taken = new Set(tree.notes.map((note) => note.path.toLowerCase()));
+    const base = suggestNoteName(found.title || section.title);
+    let candidate = `${folder}${base}.md`;
+    let counter = 2;
+    while (taken.has(candidate.toLowerCase())) {
+      candidate = `${folder}${base} ${counter}.md`;
+      counter += 1;
+    }
+
+    const updated = removeSection(doc, found.sectionStart, found.sectionEnd);
+    setContent(updated);
+    await saveNow(updated);
+
+    const response = await fetch(`/api/v1/vaults/${vault.id}/notes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: candidate, content: `${body}\n` }),
+    });
+    const data = (await response.json()) as {
+      note?: { id: string; path: string };
+      error?: string;
+    };
+    if (!response.ok || !data.note) {
+      showToast(data.error ?? "Se quitó la sección pero no se pudo crear la nota");
+      return;
+    }
+    await loadTree();
+    await openNote({ id: data.note.id, path: data.note.path, title: data.note.path });
+    showToast(`Sección extraída a ${candidate}`);
   }
 
   async function openDailyNote() {
@@ -1188,6 +1241,10 @@ views:
                         onChange={setContent}
                         readOnly={!canWrite}
                         onSave={() => void saveNow()}
+                        notes={tree.notes}
+                        activeNoteId={active.id}
+                        onExtractSection={(section) => void extractSection(section)}
+                        onToast={showToast}
                       />
                     </div>
                   </>

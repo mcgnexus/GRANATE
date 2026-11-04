@@ -4,7 +4,6 @@ import { useRef, useState } from "react";
 import {
   Bold,
   ChevronDown,
-  FileText,
   Hash,
   Italic,
   Link2,
@@ -13,6 +12,7 @@ import {
   Underline,
 } from "lucide-react";
 import type { MarkdownEditorHandle } from "./markdown-editor";
+import { NotePicker } from "./note-picker";
 import type { TreeNote } from "./file-tree";
 
 type Tag = { name: string; count: number };
@@ -77,7 +77,6 @@ export function EditorToolbar({
     const target = note.path.replace(/\.md$/i, "");
     editorRef.current?.insertText(`[[${target}]]`);
     setPanel(null);
-    setQuery("");
   }
 
   async function uploadFile(file: File) {
@@ -111,15 +110,6 @@ export function EditorToolbar({
   const filteredTags = tags
     .filter((tag) => tag.name.toLowerCase().includes(query.trim().toLowerCase()))
     .slice(0, 12);
-
-  const filteredNotes = notes
-    .filter((note) => note.id !== activeNoteId)
-    .filter((note) => {
-      const search = query.trim().toLowerCase();
-      if (!search) return true;
-      return note.title.toLowerCase().includes(search) || note.path.toLowerCase().includes(search);
-    })
-    .slice(0, 10);
 
   return (
     <div className="relative flex h-9 shrink-0 items-center gap-0.5 overflow-x-auto border-b border-[var(--border)] bg-[var(--panel)] px-2">
@@ -191,7 +181,17 @@ export function EditorToolbar({
         Markdown · Ctrl+B / I / U
       </span>
 
-      {panel ? (
+      {panel === "note" ? (
+        <NotePicker
+          notes={notes}
+          activeNoteId={activeNoteId}
+          positionClass="right-3 top-[88px]"
+          onPick={insertNote}
+          onClose={() => setPanel(null)}
+        />
+      ) : null}
+
+      {panel === "tag" ? (
         <>
           <button
             type="button"
@@ -208,74 +208,43 @@ export function EditorToolbar({
                 onChange={(event) => setQuery(event.target.value)}
                 onKeyDown={(event) => {
                   if (event.key === "Escape") setPanel(null);
-                  if (event.key === "Enter") {
-                    if (panel === "tag" && query.trim()) insertTag(query);
-                    if (panel === "note" && filteredNotes[0]) insertNote(filteredNotes[0]);
-                  }
+                  if (event.key === "Enter" && query.trim()) insertTag(query);
                 }}
-                placeholder={panel === "tag" ? "Buscar o escribir etiqueta…" : "Buscar nota…"}
+                placeholder="Buscar o escribir etiqueta…"
                 className="input h-8 pl-8 text-xs"
               />
             </div>
 
             <div className="scrollbar max-h-56 overflow-y-auto">
-              {panel === "tag" ? (
-                <>
-                  {filteredTags.map((tag) => (
-                    <button
-                      key={tag.name}
-                      type="button"
-                      onClick={() => insertTag(tag.name)}
-                      className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs hover:bg-[var(--panel-2)]"
-                    >
-                      <Hash size={12} className="text-[var(--accent-2)]" />
-                      <span className="flex-1 truncate">{tag.name}</span>
-                      <span className="text-[10px] text-[var(--muted)]">{tag.count}</span>
-                    </button>
-                  ))}
-                  {query.trim() &&
-                  !filteredTags.some(
-                    (tag) => tag.name.toLowerCase() === query.trim().toLowerCase(),
-                  ) ? (
-                    <button
-                      type="button"
-                      onClick={() => insertTag(query)}
-                      className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-[var(--accent-2)] hover:bg-[var(--panel-2)]"
-                    >
-                      <Hash size={12} /> Insertar #{query.trim()}
-                    </button>
-                  ) : null}
-                  {filteredTags.length === 0 && !query.trim() ? (
-                    <p className="px-2 py-4 text-center text-[11px] text-[var(--muted)]">
-                      Todavía no hay etiquetas. Escribe una y pulsa Enter.
-                    </p>
-                  ) : null}
-                </>
-              ) : (
-                <>
-                  {filteredNotes.map((note) => (
-                    <button
-                      key={note.id}
-                      type="button"
-                      onClick={() => insertNote(note)}
-                      className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs hover:bg-[var(--panel-2)]"
-                    >
-                      <FileText size={12} className="shrink-0 text-[var(--accent-2)]" />
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate">{note.title}</span>
-                        <span className="block truncate text-[9px] text-[var(--muted)]">
-                          {note.path}
-                        </span>
-                      </span>
-                    </button>
-                  ))}
-                  {filteredNotes.length === 0 ? (
-                    <p className="px-2 py-4 text-center text-[11px] text-[var(--muted)]">
-                      No hay notas que coincidan.
-                    </p>
-                  ) : null}
-                </>
-              )}
+              {filteredTags.map((tag) => (
+                <button
+                  key={tag.name}
+                  type="button"
+                  onClick={() => insertTag(tag.name)}
+                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs hover:bg-[var(--panel-2)]"
+                >
+                  <Hash size={12} className="text-[var(--accent-2)]" />
+                  <span className="flex-1 truncate">{tag.name}</span>
+                  <span className="text-[10px] text-[var(--muted)]">{tag.count}</span>
+                </button>
+              ))}
+              {query.trim() &&
+              !filteredTags.some(
+                (tag) => tag.name.toLowerCase() === query.trim().toLowerCase(),
+              ) ? (
+                <button
+                  type="button"
+                  onClick={() => insertTag(query)}
+                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-[var(--accent-2)] hover:bg-[var(--panel-2)]"
+                >
+                  <Hash size={12} /> Insertar #{query.trim()}
+                </button>
+              ) : null}
+              {filteredTags.length === 0 && !query.trim() ? (
+                <p className="px-2 py-4 text-center text-[11px] text-[var(--muted)]">
+                  Todavía no hay etiquetas. Escribe una y pulsa Enter.
+                </p>
+              ) : null}
             </div>
           </div>
         </>
