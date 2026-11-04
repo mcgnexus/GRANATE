@@ -1,5 +1,13 @@
-const CACHE = "granate-shell-v2";
-const SHELL = ["/offline.html", "/manifest.webmanifest", "/icon.svg"];
+const CACHE = "granate-shell-v3";
+const SHELL = [
+  "/offline.html",
+  "/manifest.webmanifest",
+  "/icon.svg",
+  "/icon-192.png",
+  "/icon-512.png",
+  "/icon-maskable-512.png",
+  "/apple-touch-icon.png",
+];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(

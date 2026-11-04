@@ -23,7 +23,15 @@ export const metadata: Metadata = {
   applicationName: "GRANATE",
   manifest: "/manifest.webmanifest",
   appleWebApp: { capable: true, title: "GRANATE", statusBarStyle: "black-translucent" },
-  icons: { icon: "/icon.svg", apple: "/icon.svg" },
+  icons: {
+    icon: [
+      { url: "/icon.svg", type: "image/svg+xml" },
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    // iOS no soporta SVG como apple-touch-icon: debe ser PNG opaco.
+    apple: "/apple-touch-icon.png",
+  },
 };
 
 export const viewport: Viewport = {
