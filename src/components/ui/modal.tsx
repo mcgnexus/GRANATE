@@ -32,7 +32,7 @@ export function Modal({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6">
+    <div className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-6">
       <button
         type="button"
         aria-label="Cerrar"
@@ -41,8 +41,12 @@ export function Modal({
       />
       <div
         className={`panel relative z-10 flex max-h-[92dvh] w-full flex-col overflow-hidden shadow-2xl ${
-          full ? "h-[92dvh] max-w-[1400px]" : wide ? "max-w-4xl" : "max-w-lg"
-        }`}
+          full
+            ? "h-[92dvh] max-w-[1400px] sm:rounded-xl"
+            : wide
+              ? "max-w-4xl sm:rounded-xl"
+              : "max-w-lg sm:rounded-xl"
+        } max-sm:rounded-b-none max-sm:rounded-t-xl max-sm:border-b-0`}
       >
         {title ? (
           <div className="flex items-start justify-between gap-4 border-b border-[var(--border)] px-5 py-4">

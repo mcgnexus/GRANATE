@@ -13,6 +13,7 @@ import {
   MoreHorizontal,
   Network,
   PanelLeftClose,
+  PanelRightOpen,
   PencilLine,
   Save,
   Search,
@@ -123,6 +124,7 @@ export function Workspace({ vault }: { vault: VaultAccess }) {
   const [llmLoading, setLlmLoading] = useState<NoteAction | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [propertiesOpen, setPropertiesOpen] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [toast, setToast] = useState("");
 
@@ -206,6 +208,7 @@ export function Workspace({ vault }: { vault: VaultAccess }) {
     setMode("edit");
     setSaveState("idle");
     setSidebarOpen(false);
+    setDetailsOpen(false);
     void fetch(`/api/v1/vaults/${vault.id}/notes/${note.id}/open`, { method: "POST" })
       .then(() => loadTree())
       .catch(() => undefined);
@@ -991,7 +994,7 @@ views:
         ) : null}
       </header>
 
-      <div className="flex min-h-0 flex-1">
+      <div className="relative flex min-h-0 flex-1">
         <aside
           className={`${
             sidebarOpen ? "absolute inset-y-12 left-0 z-30 w-72 shadow-2xl" : "hidden"
@@ -1097,14 +1100,14 @@ views:
             <BaseView vaultId={vault.id} basePath={baseTarget.path} onOpenNote={openByPath} />
           ) : active ? (
             <>
-              <div className="flex h-10 shrink-0 items-center gap-2 border-b border-[var(--border)] px-3">
+              <div className="flex h-10 shrink-0 items-center gap-1 overflow-x-auto border-b border-[var(--border)] px-2 sm:h-auto sm:gap-2 sm:px-3">
                 <div className="flex min-w-0 items-center gap-1.5 text-[11px] text-[var(--muted)]">
                   <span className="hidden truncate sm:inline">{active.path.split("/").slice(0, -1).join(" / ")}</span>
                   {active.path.includes("/") ? <span className="hidden sm:inline">/</span> : null}
                   <span className="truncate text-[var(--text-soft)]">{active.title}</span>
                 </div>
 
-                <div className="ml-auto flex items-center gap-1">
+                <div className="ml-auto flex shrink-0 items-center gap-1 pl-2">
                   <span className="mr-1 hidden items-center gap-1 text-[10px] text-[var(--muted)] sm:flex">
                     {saveState === "saving" ? <Loader2 size={11} className="animate-spin" /> : null}
                     {saveState === "saved" ? <Check size={11} className="text-[var(--green)]" /> : null}
@@ -1124,19 +1127,28 @@ views:
                     onClick={() => setMode("edit")}
                     className={`btn h-7 px-2 text-[11px] ${mode === "edit" ? "bg-[var(--accent-soft)]" : "btn-ghost"}`}
                   >
-                    <PencilLine size={12} /> Editar
+                    <PencilLine size={12} /> <span className="hidden sm:inline">Editar</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => setMode("preview")}
                     className={`btn h-7 px-2 text-[11px] ${mode === "preview" ? "bg-[var(--accent-soft)]" : "btn-ghost"}`}
                   >
-                    <Eye size={12} /> Ver
+                    <Eye size={12} /> <span className="hidden sm:inline">Ver</span>
                   </button>
                   <button type="button" onClick={() => void saveNow()} className="btn btn-ghost h-7 w-7 p-0" title="Guardar (Ctrl+S)">
                     <Save size={13} />
                   </button>
-                  <button type="button" onClick={renameActive} className="btn btn-ghost h-7 w-7 p-0" title="Renombrar">
+                  <button
+                    type="button"
+                    onClick={() => setDetailsOpen(true)}
+                    className="btn btn-ghost h-7 w-7 p-0 xl:hidden"
+                    title="Detalles de la nota"
+                    aria-label="Detalles de la nota"
+                  >
+                    <PanelRightOpen size={13} />
+                  </button>
+                  <button type="button" onClick={renameActive} className="btn btn-ghost hidden h-7 w-7 p-0 sm:flex" title="Renombrar">
                     <PencilLine size={13} />
                   </button>
                   <button
@@ -1147,7 +1159,7 @@ views:
                   >
                     <Share2 size={13} />
                   </button>
-                  <button type="button" onClick={openHistory} className="btn btn-ghost h-7 w-7 p-0" title="Historial">
+                  <button type="button" onClick={openHistory} className="btn btn-ghost hidden h-7 w-7 p-0 sm:flex" title="Historial">
                     <History size={13} />
                   </button>
                   <button type="button" onClick={deleteActive} className="btn btn-ghost h-7 w-7 p-0 text-[var(--accent-2)]" title="Mover a papelera">
@@ -1209,7 +1221,7 @@ views:
             </div>
           )}
 
-          <footer className="flex h-7 shrink-0 items-center gap-3 border-t border-[var(--border)] bg-[var(--panel)] px-3 text-[10px] text-[var(--muted)]">
+          <footer className="safe-bottom flex min-h-7 shrink-0 items-center gap-3 border-t border-[var(--border)] bg-[var(--panel)] px-3 text-[10px] text-[var(--muted)]">
             <span>{tree.notes?.length ?? 0} notas</span>
             <span>{tree.tags?.length ?? 0} etiquetas</span>
             <span className="ml-auto flex items-center gap-1.5">
@@ -1265,31 +1277,55 @@ views:
             </div>
           </aside>
         ) : active ? (
-          <aside className="hidden w-[286px] shrink-0 border-l border-[var(--border)] bg-[var(--panel)] xl:block">
-            <div className="flex h-full flex-col">
-              <div className="flex border-b border-[var(--border)]">
-                <button
-                  type="button"
-                  onClick={() => setRightTab("details")}
-                  className={`flex-1 px-3 py-2 text-[11px] ${rightTab === "details" ? "border-b-2 border-[var(--accent)] text-[var(--text)]" : "text-[var(--muted)]"}`}
-                >
-                  Detalles
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setRightTab("ai")}
-                  className={`flex-1 px-3 py-2 text-[11px] ${rightTab === "ai" ? "border-b-2 border-[var(--accent)] text-[var(--text)]" : "text-[var(--muted)]"}`}
-                >
-                  IA
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setRightTab("files")}
-                  className={`flex-1 px-3 py-2 text-[11px] ${rightTab === "files" ? "border-b-2 border-[var(--accent)] text-[var(--text)]" : "text-[var(--muted)]"}`}
-                >
-                  Adjuntos
-                </button>
-              </div>
+          <>
+            {detailsOpen ? (
+              <button
+                type="button"
+                aria-label="Cerrar panel de detalles"
+                className="absolute inset-0 z-20 bg-black/40 xl:hidden"
+                onClick={() => setDetailsOpen(false)}
+              />
+            ) : null}
+            <aside
+              className={`${
+                detailsOpen
+                  ? "fixed inset-y-12 right-0 z-30 flex w-[320px] max-w-[88vw] shadow-2xl"
+                  : "hidden"
+              } shrink-0 flex-col border-l border-[var(--border)] bg-[var(--panel)] xl:static xl:inset-auto xl:z-auto xl:flex xl:w-[286px] xl:shadow-none`}
+            >
+              <div className="flex h-full flex-col">
+                <div className="flex border-b border-[var(--border)]">
+                  <button
+                    type="button"
+                    onClick={() => setRightTab("details")}
+                    className={`flex-1 px-3 py-2 text-[11px] ${rightTab === "details" ? "border-b-2 border-[var(--accent)] text-[var(--text)]" : "text-[var(--muted)]"}`}
+                  >
+                    Detalles
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRightTab("ai")}
+                    className={`flex-1 px-3 py-2 text-[11px] ${rightTab === "ai" ? "border-b-2 border-[var(--accent)] text-[var(--text)]" : "text-[var(--muted)]"}`}
+                  >
+                    IA
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRightTab("files")}
+                    className={`flex-1 px-3 py-2 text-[11px] ${rightTab === "files" ? "border-b-2 border-[var(--accent)] text-[var(--text)]" : "text-[var(--muted)]"}`}
+                  >
+                    Adjuntos
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-ghost my-1 mr-1 h-7 w-7 shrink-0 self-center p-0 xl:hidden"
+                    onClick={() => setDetailsOpen(false)}
+                    title="Cerrar"
+                    aria-label="Cerrar panel de detalles"
+                  >
+                    <PanelLeftClose size={14} />
+                  </button>
+                </div>
 
               <div className="scrollbar min-h-0 flex-1 space-y-5 overflow-y-auto p-4 text-xs">
                 {rightTab === "details" ? (
@@ -1434,10 +1470,11 @@ views:
                       tratan como datos, nunca como instrucciones.
                     </p>
                   </>
-                )}
+                 )}
               </div>
             </div>
           </aside>
+          </>
         ) : null}
       </div>
 
@@ -1685,7 +1722,7 @@ views:
       />
 
       {toast ? (
-        <div className="fixed bottom-5 left-1/2 z-[60] -translate-x-1/2 rounded-lg border border-[var(--border)] bg-[var(--panel-2)] px-4 py-2 text-xs shadow-xl">
+        <div className="safe-toast fixed left-1/2 z-[60] -translate-x-1/2 rounded-lg border border-[var(--border)] bg-[var(--panel-2)] px-4 py-2 text-xs shadow-xl">
           {toast}
         </div>
       ) : null}

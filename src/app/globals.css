@@ -403,6 +403,38 @@ a {
 }
 }
 
+/* ---------- Móvil y tablet ---------- */
+
+html {
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  overscroll-behavior-y: none;
+}
+
+@media (pointer: coarse) {
+  /* Evita el zoom automático de iOS al enfocar inputs pequeños */
+  .input,
+  select.input {
+    font-size: 16px;
+  }
+
+  /* Objetivos táctiles más cómodos */
+  .btn {
+    padding-top: 0.6rem;
+    padding-bottom: 0.6rem;
+  }
+}
+
+.safe-bottom {
+  padding-bottom: max(0px, env(safe-area-inset-bottom));
+}
+
+.safe-toast {
+  bottom: calc(1.25rem + env(safe-area-inset-bottom));
+}
+
 /* ---------- Markdown preview ---------- */
 
 .prose-granate {
