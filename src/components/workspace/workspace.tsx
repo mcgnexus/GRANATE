@@ -5,6 +5,7 @@ import {
   AlertCircle,
   CalendarDays,
   Check,
+  Download,
   FilePlus2,
   History,
   Loader2,
@@ -44,6 +45,7 @@ import { AttachmentsPanel } from "./attachments-panel";
 import { ShareModal } from "./share-modal";
 import { PreferencesSync } from "@/components/ui/preferences-sync";
 import { Modal } from "@/components/ui/modal";
+import { InstallHelpModal, usePwaInstall } from "@/components/pwa-install";
 import { ACTION_LABELS, type NoteAction } from "@/lib/ai/actions";
 import type { VaultAccess } from "@/lib/auth/api";
 import { findHeadingSection, removeSection, suggestNoteName } from "@/lib/markdown/formatting";
@@ -94,6 +96,7 @@ export function Workspace({ vault }: { vault: VaultAccess }) {
   const [assistantTab, setAssistantTab] = useState<"ask" | "agent">("ask");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [installHelpOpen, setInstallHelpOpen] = useState(false);
   const [newNoteOpen, setNewNoteOpen] = useState(false);
   const [newNotePath, setNewNotePath] = useState("Nueva nota.md");
   const [newNoteTemplate, setNewNoteTemplate] = useState("");
@@ -128,6 +131,8 @@ export function Workspace({ vault }: { vault: VaultAccess }) {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [toast, setToast] = useState("");
+
+  const pwaInstall = usePwaInstall();
 
   const latest = useRef({ content, activeId: active?.id, activeContent: active?.content });
   latest.current = { content, activeId: active?.id, activeContent: active?.content };
@@ -1042,6 +1047,20 @@ views:
               >
                 <Upload size={14} /> Importar bóveda
               </button>
+              {pwaInstall.installed ? null : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    void pwaInstall.promptInstall().then((outcome) => {
+                      if (outcome === "unavailable") setInstallHelpOpen(true);
+                    });
+                  }}
+                  className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs hover:bg-[var(--panel-2)]"
+                >
+                  <Download size={14} /> Instalar app
+                </button>
+              )}
             </div>
           </>
         ) : null}
@@ -1572,6 +1591,12 @@ views:
         onClose={() => setImportOpen(false)}
         vaultId={vault.id}
         onImported={() => void loadTree()}
+      />
+
+      <InstallHelpModal
+        open={installHelpOpen}
+        onClose={() => setInstallHelpOpen(false)}
+        isIOS={pwaInstall.isIOS}
       />
 
       <Modal open={newNoteOpen} onClose={() => setNewNoteOpen(false)} title="Nueva nota" subtitle="Ruta dentro de la bóveda">

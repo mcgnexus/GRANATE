@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect } from "react";
+// Suscripción temprana a `beforeinstallprompt` (se registra al importar el módulo).
+import "@/components/pwa-install";
 
 export function RegisterSW() {
   useEffect(() => {

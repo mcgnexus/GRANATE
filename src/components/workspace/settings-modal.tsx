@@ -6,6 +6,7 @@ import { Copy, Download, KeyRound, Loader2, RefreshCw, Tag, Trash2 } from "lucid
 import { Modal } from "@/components/ui/modal";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { PalettePicker } from "@/components/ui/palette-picker";
+import { InstallHelpModal, usePwaInstall } from "@/components/pwa-install";
 import { vaultTemplateSettings } from "@/lib/templates";
 
 type Token = {
@@ -56,6 +57,8 @@ export function SettingsModal({
     "postgres",
   );
   const [backupStatus, setBackupStatus] = useState("");
+  const [installHelpOpen, setInstallHelpOpen] = useState(false);
+  const pwaInstall = usePwaInstall();
   const router = useRouter();
 
   const loadTags = useCallback(async () => {
@@ -547,6 +550,33 @@ export function SettingsModal({
             )}
           </div>
         </section>
+
+        {pwaInstall.installed ? null : (
+          <section>
+            <h3 className="text-sm font-medium">Aplicación</h3>
+            <p className="mt-1 text-[11px] leading-5 text-[var(--muted)]">
+              Instala GRANATE en tu dispositivo para abrirla como una app, con su propio icono y
+              ventana.
+            </p>
+            <button
+              type="button"
+              className="btn mt-2 gap-1.5 text-xs"
+              onClick={() => {
+                void pwaInstall.promptInstall().then((outcome) => {
+                  if (outcome === "unavailable") setInstallHelpOpen(true);
+                });
+              }}
+            >
+              <Download size={14} /> Instalar app
+            </button>
+          </section>
+        )}
+
+        <InstallHelpModal
+          open={installHelpOpen}
+          onClose={() => setInstallHelpOpen(false)}
+          isIOS={pwaInstall.isIOS}
+        />
 
         <section className="rounded-lg border border-[var(--border)] bg-[var(--panel-2)] p-4">
           <h3 className="text-sm font-medium">CLI</h3>
