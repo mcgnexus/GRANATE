@@ -444,6 +444,21 @@ body {
   max-width: 46rem;
 }
 
+.prose-granate .preview-editable-block {
+  cursor: text;
+  border-radius: 4px;
+  transition: background-color 0.12s ease;
+}
+
+.prose-granate .preview-editable-block:hover {
+  background: color-mix(in srgb, var(--accent-soft) 45%, transparent);
+}
+
+.prose-granate .preview-editable-block:focus-visible {
+  outline: 1px dashed var(--accent);
+  outline-offset: 3px;
+}
+
 .prose-granate h1,
 .prose-granate h2,
 .prose-granate h3,

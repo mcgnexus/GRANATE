@@ -84,6 +84,29 @@ test.describe("GRANATE flujo principal", () => {
         .toContain("e2e");
 
       await page.locator('aside button[title^="Destino/Prueba.md"]').click();
+      await page.getByRole("heading", { name: "Prueba", exact: true }).click();
+      let blockEditor = page.getByRole("textbox", { name: "Editar bloque Markdown" });
+      await expect(blockEditor).toHaveValue("# Prueba");
+      await blockEditor.fill("# Prueba descartada");
+      await blockEditor.press("Escape");
+      await expect(page.getByRole("heading", { name: "Prueba", exact: true })).toBeVisible();
+
+      await page.getByRole("heading", { name: "Prueba", exact: true }).click();
+      blockEditor = page.getByRole("textbox", { name: "Editar bloque Markdown" });
+      await blockEditor.fill("# Prueba actualizada");
+      await page.locator(".prose-granate").getByText("#inicial", { exact: true }).click();
+      await expect(page.getByRole("heading", { name: "Prueba actualizada", exact: true })).toBeVisible();
+      await expect(page.getByRole("textbox", { name: "Editar bloque Markdown" })).toHaveValue("#inicial");
+      await page.getByRole("textbox", { name: "Editar bloque Markdown" }).press("Escape");
+      await expect
+        .poll(async () => {
+          const response = await request.get(`${baseURL}/api/v1/vaults/${vault.id}/notes/${note.id}`, {
+            headers: { cookie },
+          });
+          return (await response.json()).note.content as string;
+        })
+        .toContain("# Prueba actualizada");
+
       await page.getByRole("button", { name: "Historial" }).click();
       await expect(page.getByText("Historial de versiones")).toBeVisible();
       await page.keyboard.press("Escape");

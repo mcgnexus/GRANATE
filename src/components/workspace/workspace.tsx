@@ -81,7 +81,7 @@ export function Workspace({ vault }: { vault: VaultAccess }) {
   const [bases, setBases] = useState<TreeBase[]>([]);
   const [active, setActive] = useState<NoteDetail | null>(null);
   const [content, setContent] = useState("");
-  const [mode, setMode] = useState<"edit" | "preview">("edit");
+  const [mode, setMode] = useState<"edit" | "preview">("preview");
   const [view, setView] = useState<"note" | "canvas" | "base">("note");
   const [canvasTarget, setCanvasTarget] = useState<TreeCanvas | null>(null);
   const [baseTarget, setBaseTarget] = useState<TreeBase | null>(null);
@@ -193,6 +193,14 @@ export function Workspace({ vault }: { vault: VaultAccess }) {
   }, []);
 
   async function openNote(note: TreeNote) {
+    const current = latest.current;
+    if (current.activeId && current.content !== current.activeContent) {
+      const saved = await saveNow();
+      if (!saved) {
+        showToast("No se pudo guardar la nota actual; no se cambió de nota");
+        return;
+      }
+    }
     const response = await fetch(`/api/v1/vaults/${vault.id}/notes/${note.id}`);
     if (!response.ok) {
       showToast("No se pudo abrir la nota");
@@ -211,7 +219,7 @@ export function Workspace({ vault }: { vault: VaultAccess }) {
     setActive(detail);
     setContent(detail.content);
     setView("note");
-    setMode("edit");
+    setMode("preview");
     setSaveState("idle");
     setSidebarOpen(false);
     setDetailsOpen(false);
@@ -261,11 +269,11 @@ export function Workspace({ vault }: { vault: VaultAccess }) {
     }
   }
 
-  async function saveNow(explicit?: string) {
+  async function saveNow(explicit?: string): Promise<boolean> {
     const noteId = latest.current.activeId;
-    if (!noteId) return;
+    if (!noteId) return true;
     const value = explicit ?? latest.current.content;
-    if (explicit === undefined && value === latest.current.activeContent) return;
+    if (explicit === undefined && value === latest.current.activeContent) return true;
     window.clearTimeout(saveTimer.current);
     setSaveState("saving");
     try {
@@ -282,8 +290,10 @@ export function Workspace({ vault }: { vault: VaultAccess }) {
       window.setTimeout(() => {
         setSaveState((current) => (current === "saved" ? "idle" : current));
       }, 1800);
+      return true;
     } catch {
       setSaveState("error");
+      return false;
     }
   }
 
@@ -1194,20 +1204,26 @@ views:
                             ? "error"
                             : "guardado"}
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => setMode("edit")}
-                    className={`btn h-7 px-2 text-[11px] ${mode === "edit" ? "bg-[var(--accent-soft)]" : "btn-ghost"}`}
-                  >
-                    <PencilLine size={12} /> <span className="hidden sm:inline">Editar</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setMode("preview")}
-                    className={`btn h-7 px-2 text-[11px] ${mode === "preview" ? "bg-[var(--accent-soft)]" : "btn-ghost"}`}
-                  >
-                    <Eye size={12} /> <span className="hidden sm:inline">Ver</span>
-                  </button>
+                  {mode === "preview" ? (
+                    <button
+                      type="button"
+                      onClick={() => setMode("edit")}
+                      className="btn btn-ghost h-7 px-2 text-[11px]"
+                      title="Abrir el documento Markdown completo"
+                    >
+                      <PencilLine size={12} />
+                      <span className="hidden sm:inline">Editar Markdown</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setMode("preview")}
+                      className="btn btn-ghost h-7 px-2 text-[11px]"
+                      title="Volver a la vista previa editable"
+                    >
+                      <Eye size={12} /> <span className="hidden sm:inline">Vista previa</span>
+                    </button>
+                  )}
                   <button type="button" onClick={() => void saveNow()} className="btn btn-ghost h-7 w-7 p-0" title="Guardar (Ctrl+S)">
                     <Save size={13} />
                   </button>
@@ -1269,7 +1285,15 @@ views:
                   </>
                 ) : (
                   <div className="scrollbar h-full overflow-y-auto">
-                    <MarkdownPreview content={content} vaultId={vault.id} onOpenNote={openByPath} />
+                    <MarkdownPreview
+                      key={active.id}
+                      content={content}
+                      vaultId={vault.id}
+                      onOpenNote={openByPath}
+                      canEdit={canWrite}
+                      onChange={setContent}
+                      onEditConflict={() => showToast("El bloque cambió; vuelve a pulsarlo para editarlo")}
+                    />
                   </div>
                 )}
               </div>
