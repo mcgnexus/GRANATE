@@ -43,15 +43,22 @@ export function ContextMenu({
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
     };
+    // El scroll *dentro* del menú (que es scrollable) no debe cerrarlo; solo el
+    // scroll del resto de la página.
+    const onScroll = (event: Event) => {
+      const target = event.target;
+      if (target instanceof Node && ref.current?.contains(target)) return;
+      onClose();
+    };
     window.addEventListener("mousedown", onPointer, true);
     window.addEventListener("keydown", onKey);
     window.addEventListener("resize", onClose);
-    window.addEventListener("scroll", onClose, true);
+    window.addEventListener("scroll", onScroll, true);
     return () => {
       window.removeEventListener("mousedown", onPointer, true);
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("resize", onClose);
-      window.removeEventListener("scroll", onClose, true);
+      window.removeEventListener("scroll", onScroll, true);
     };
   }, [onClose]);
 
@@ -127,14 +134,23 @@ function MenuRow({
 }) {
   const children = entry.children;
   const hasChildren = Boolean(children?.length);
+  const wrapperRef = useRef<HTMLDivElement>(null);
 
   return (
     // El submenú se renderiza dentro de este wrapper para que el puntero siga
     // "dentro" de la fila y no se cierre al moverse hacia él.
     <div
+      ref={wrapperRef}
       className="relative"
-      onMouseEnter={() => setOpen(hasChildren)}
-      onMouseLeave={() => setOpen(false)}
+      onPointerEnter={(event) => {
+        // Solo el ratón abre por hover: en táctil el `mouseenter` sintético
+        // seguido del clic alternaría el estado y el submenú nunca quedaría
+        // abierto.
+        if (event.pointerType === "mouse") setOpen(hasChildren);
+      }}
+      onPointerLeave={(event) => {
+        if (event.pointerType === "mouse") setOpen(false);
+      }}
     >
       <button
         type="button"
@@ -166,41 +182,74 @@ function MenuRow({
         {hasChildren ? <ChevronRight size={12} className="text-[var(--muted)]" /> : null}
       </button>
       {children && open ? (
-        <SubmenuPanel entries={children} onClose={onClose} />
+        <SubmenuPanel anchor={wrapperRef} entries={children} onClose={onClose} />
       ) : null}
     </div>
   );
 }
 
 function SubmenuPanel({
+  anchor,
   entries,
   onClose,
 }: {
+  anchor: React.RefObject<HTMLDivElement | null>;
   entries: MenuEntry[];
   onClose: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const [side, setSide] = useState<"right" | "left">("right");
-  const [offsetY, setOffsetY] = useState(0);
+  const [style, setStyle] = useState<React.CSSProperties>({ visibility: "hidden" });
 
-  useLayoutEffect(() => {
+  const position = () => {
     const node = ref.current;
-    if (!node) return;
+    const anchorNode = anchor.current;
+    if (!node || !anchorNode) return;
     const rect = node.getBoundingClientRect();
-    if (rect.right > window.innerWidth - 8) setSide("left");
-    if (rect.bottom > window.innerHeight - 8) {
-      setOffsetY(Math.min(0, window.innerHeight - 8 - rect.bottom));
+    const anchorRect = anchorNode.getBoundingClientRect();
+    // `position: fixed` evade el `overflow` del panel raíz (que recortaría un
+    // submenú `absolute`), así que la posición se calcula contra el viewport.
+    let left: number;
+    if (anchorRect.right + rect.width <= window.innerWidth - 8) {
+      left = anchorRect.right;
+    } else if (anchorRect.left - rect.width >= 8) {
+      left = anchorRect.left - rect.width;
+    } else {
+      // No cabe a ningún lado (pantallas estrechas): al borde derecho,
+      // solapando un poco el menú raíz en vez de salirse del viewport.
+      left = Math.max(8, Math.min(anchorRect.right, window.innerWidth - 8 - rect.width));
     }
+    let top = anchorRect.top;
+    if (top + rect.height > window.innerHeight - 8) {
+      top = window.innerHeight - 8 - rect.height;
+    }
+    if (top < 8) top = 8;
+    setStyle((prev) =>
+      prev.left === left && prev.top === top && prev.visibility === "visible"
+        ? prev
+        : { left, top, visibility: "visible" },
+    );
+  };
+
+  // Tras cada render (p. ej. cuando un ancestro se reubica) y ante scroll/resize.
+  useLayoutEffect(() => {
+    position();
+  });
+  useEffect(() => {
+    window.addEventListener("scroll", position, true);
+    window.addEventListener("resize", position);
+    return () => {
+      window.removeEventListener("scroll", position, true);
+      window.removeEventListener("resize", position);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
     <div
       ref={ref}
       role="menu"
-      className={`panel absolute top-0 z-[71] max-h-[min(20rem,calc(100vh-16px))] min-w-44 overflow-y-auto p-1 shadow-2xl ${
-        side === "right" ? "left-full" : "right-full"
-      }`}
-      style={{ transform: `translateY(${offsetY}px)` }}
+      className="panel fixed z-[71] max-h-[min(20rem,calc(100vh-16px))] min-w-44 overflow-y-auto p-1 shadow-2xl"
+      style={style}
       onContextMenu={(event) => event.preventDefault()}
     >
       <MenuList entries={entries} onClose={onClose} />
