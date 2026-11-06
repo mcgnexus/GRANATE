@@ -29,8 +29,8 @@ const schema = {
     // El schema base solo permite clases language-* en <code>; sin esto,
     // rehype-katex pierde math-display y renderiza los bloques $$…$$ como inline.
     code: [...(defaultSchema.attributes?.code ?? []), ["className", /^math-/]],
-    mark: [...(defaultSchema.attributes?.mark ?? []), "className"],
-    span: [...(defaultSchema.attributes?.span ?? []), "className"],
+    mark: [...(defaultSchema.attributes?.mark ?? []), ["className", /^[a-zA-Z0-9 _-]+$/]],
+    span: [...(defaultSchema.attributes?.span ?? []), ["className", /^[a-zA-Z0-9 _-]+$/]],
   },
   protocols: {
     ...defaultSchema.protocols,
@@ -256,7 +256,13 @@ export function MarkdownPreview({
           // Sanitiza primero el HTML del usuario; KaTeX después añade su markup de confianza.
           rehypePlugins={[rehypeRaw, [rehypeSanitize, schema], rehypeKatex]}
           components={PREVIEW_COMPONENTS}
-          urlTransform={(url) => url}
+          urlTransform={(url) => {
+            if (url.startsWith("granate:")) return url;
+            if (/^(https?:|mailto:)/i.test(url)) return url;
+            if (url.startsWith("//")) return "";
+            if (url.startsWith("/") || url.startsWith("#")) return url;
+            return /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(url) ? "" : url;
+          }}
         >
           {markdown || "_Nota vacía._"}
         </ReactMarkdown>

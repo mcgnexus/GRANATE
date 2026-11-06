@@ -1,4 +1,5 @@
 import { and, asc, desc, eq, inArray, isNull, notExists, or, sql } from "drizzle-orm";
+import type { BatchItem } from "drizzle-orm/batch";
 import { db } from "@/lib/db";
 import {
   folders,
@@ -195,6 +196,68 @@ export async function createNote(input: CreateNoteInput): Promise<Note> {
   return note;
 }
 
+
+/** Prepara las escrituras de enlaces y etiquetas de una nota para ejecutarse en batch. */
+async function planNoteDerivedStatements(
+  noteId: string,
+): Promise<BatchItem<"pg">[]> {
+  const statements: BatchItem<"pg">[] = [];
+  const [note] = await db.select().from(notes).where(eq(notes.id, noteId)).limit(1);
+  if (!note) return statements;
+
+  const parsed = parseFrontmatter(note.content);
+  const all = await db
+    .select({ id: notes.id, path: notes.path, frontmatter: notes.frontmatter })
+    .from(notes)
+    .where(and(eq(notes.vaultId, note.vaultId), isNull(notes.deletedAt)));
+  const resolvable = buildAliasMap(all);
+  const parsedLinks = parseLinks(parsed.body);
+
+  statements.push(db.delete(links).where(eq(links.sourceNoteId, noteId)));
+
+  const rows = parsedLinks.map((link) => {
+    const target = resolveLink(link.target, note.path, resolvable);
+    return {
+      vaultId: note.vaultId,
+      sourceNoteId: noteId,
+      rawTarget: link.rawTarget,
+      targetPath: target?.path ?? link.target,
+      targetNoteId: target?.id ?? null,
+      kind: link.kind,
+      heading: link.heading,
+      alias: link.alias,
+      resolved: Boolean(target),
+    };
+  });
+  if (rows.length) {
+    for (let i = 0; i < rows.length; i += 200) {
+      statements.push(db.insert(links).values(rows.slice(i, i + 200)));
+    }
+  }
+
+  statements.push(db.delete(noteTags).where(eq(noteTags.noteId, noteId)));
+
+  const noteTagNames = collectTags(parsed.frontmatter, parsed.body);
+  for (const name of noteTagNames) {
+    // Upsert de la etiqueta + asociación por subconsulta: dentro del batch,
+    // la subconsulta ve la etiqueta creada por este mismo lote o por otro ya
+    // confirmado, así no hay carrera con el índice único.
+    statements.push(
+      db.insert(tags).values({ vaultId: note.vaultId, name }).onConflictDoNothing(),
+    );
+    statements.push(
+      db
+        .insert(noteTags)
+        .values({
+          noteId,
+          tagId: sql`(select ${tags.id} from ${tags} where ${tags.vaultId} = ${note.vaultId} and lower(${tags.name}) = ${name.toLowerCase()})`,
+        })
+        .onConflictDoNothing(),
+    );
+  }
+  return statements;
+}
+
 export type UpdateNoteInput = {
   vaultId: string;
   noteId: string;
@@ -203,6 +266,8 @@ export type UpdateNoteInput = {
   path?: string;
   frontmatter?: Frontmatter;
   source?: "save" | "import" | "llm" | "restore" | "api";
+  /** Import can skip per-note link resolution and run one pass at the end. */
+  skipDerived?: boolean;
 };
 
 export async function updateNote(input: UpdateNoteInput): Promise<Note> {
@@ -214,6 +279,9 @@ export async function updateNote(input: UpdateNoteInput): Promise<Note> {
   const existing = rows[0];
   if (!existing) throw new Error("Nota no encontrada");
 
+  // Un cambio que solo trae ruta no debe reescribir el contenido: evita pisar
+  // un guardado concurrente con una lectura anterior del documento.
+  const contentChanged = input.content !== undefined || input.frontmatter !== undefined;
   let content = input.content ?? existing.content;
   if (input.frontmatter) {
     const parsed = parseFrontmatter(content);
@@ -225,70 +293,92 @@ export async function updateNote(input: UpdateNoteInput): Promise<Note> {
   const finalPath = nextPath.endsWith(".md") ? nextPath : `${nextPath}.md`;
   const pathChanged = finalPath.toLowerCase() !== existing.path.toLowerCase();
 
-  const [updated] = await db
-    .update(notes)
-    .set({
-      path: finalPath,
-      title: titleFromPath(finalPath),
-      content,
-      frontmatter: input.frontmatter ?? parsed.frontmatter,
-      contentHash: contentHash(content),
-      wordCount: countWords(content),
-      updatedBy: input.userId,
-      updatedAt: new Date(),
-      mtime: new Date(),
-    })
-    .where(eq(notes.id, existing.id))
-    .returning();
-
-  await db.insert(noteVersions).values({
-    noteId: existing.id,
-    content,
-    frontmatter: updated.frontmatter,
-    contentHash: updated.contentHash,
-    source: input.source ?? "save",
-    createdBy: input.userId,
-  });
-
-  if (pathChanged) {
-    await ensureFolders(input.vaultId, finalPath);
-    await rewriteIncomingLinks(input.vaultId, existing.path, finalPath, existing.id);
-  }
-
-  await syncNoteDerived(existing.id);
-  return updated;
-}
-
-async function rewriteIncomingLinks(
-  vaultId: string,
-  oldPath: string,
-  newPath: string,
-  movedNoteId: string,
-) {
-  const all = await db
-    .select({ id: notes.id, path: notes.path, content: notes.content, frontmatter: notes.frontmatter })
-    .from(notes)
-    .where(and(eq(notes.vaultId, vaultId), isNull(notes.deletedAt)));
-
-  const resolvable = buildAliasMap(all);
-  // The moved note already has its new path in the DB, so add a synthetic entry
-  // with the old path to keep resolving links that still point to the old name.
-  resolvable.push({ id: movedNoteId, path: oldPath, aliases: [] });
-  const { rewriteLinks } = await import("@/lib/markdown/links");
-
-  for (const note of all) {
-    const nextContent = rewriteLinks(note.content, oldPath, newPath, resolvable);
-    if (nextContent === note.content) continue;
-    await db
+  // Atomicidad total: nota, versión, carpetas, reescritura de enlaces y
+  // derivados se envían en un único batch, que el driver de Neon ejecuta
+  // dentro de una transacción HTTP (todo o nada).
+  const statements: BatchItem<"pg">[] = [];
+  statements.push(
+    db
       .update(notes)
       .set({
-        content: nextContent,
-        contentHash: contentHash(nextContent),
+        path: finalPath,
+        title: titleFromPath(finalPath),
+        ...(contentChanged
+          ? {
+              content,
+              frontmatter: input.frontmatter ?? parsed.frontmatter,
+              contentHash: contentHash(content),
+              wordCount: countWords(content),
+            }
+          : {}),
+        updatedBy: input.userId,
         updatedAt: new Date(),
+        mtime: new Date(),
       })
-      .where(eq(notes.id, note.id));
-    await syncNoteDerived(note.id);
+      .where(eq(notes.id, existing.id)),
+  );
+
+  if (contentChanged) {
+    statements.push(
+      db.insert(noteVersions).values({
+        noteId: existing.id,
+        content,
+        frontmatter: input.frontmatter ?? parsed.frontmatter,
+        contentHash: contentHash(content),
+        source: input.source ?? "save",
+        createdBy: input.userId,
+      }),
+    );
   }
+
+  if (pathChanged) {
+    const parts = finalPath.split("/").slice(0, -1);
+    for (let i = 1; i <= parts.length; i++) {
+      statements.push(
+        db
+          .insert(folders)
+          .values({ vaultId: input.vaultId, path: parts.slice(0, i).join("/") })
+          .onConflictDoNothing(),
+      );
+    }
+
+    const all = await db
+      .select({
+        id: notes.id,
+        path: notes.path,
+        content: notes.content,
+        frontmatter: notes.frontmatter,
+      })
+      .from(notes)
+      .where(and(eq(notes.vaultId, input.vaultId), isNull(notes.deletedAt)));
+    const resolvable = buildAliasMap(all);
+    resolvable.push({ id: existing.id, path: existing.path, aliases: [] });
+    const { rewriteLinks } = await import("@/lib/markdown/links");
+
+    for (const note of all) {
+      const nextContent = rewriteLinks(note.content, existing.path, finalPath, resolvable);
+      if (nextContent === note.content) continue;
+      statements.push(
+        db
+          .update(notes)
+          .set({
+            content: nextContent,
+            contentHash: contentHash(nextContent),
+            updatedAt: new Date(),
+          })
+          .where(eq(notes.id, note.id)),
+      );
+      statements.push(...(await planNoteDerivedStatements(note.id)));
+    }
+  }
+
+  if (contentChanged && !input.skipDerived) {
+    statements.push(...(await planNoteDerivedStatements(existing.id)));
+  }
+
+  await db.batch(statements as [BatchItem<"pg">, ...BatchItem<"pg">[]]);
+  const [updated] = await db.select().from(notes).where(eq(notes.id, existing.id)).limit(1);
+  return updated;
 }
 
 /** Renames a folder (and its subfolders) moving every note and rewriting links once. */
@@ -948,12 +1038,25 @@ export async function syncNoteDerived(noteId: string) {
 
     let tagId = existing[0]?.id;
     if (!tagId) {
-      const [created] = await db
+      // Upsert: si otra petición creó la etiqueta a la vez, recuperamos la suya
+      // en lugar de chocar con el índice único.
+      const inserted = await db
         .insert(tags)
         .values({ vaultId: note.vaultId, name })
+        .onConflictDoNothing()
         .returning({ id: tags.id });
-      tagId = created.id;
+      if (inserted[0]) {
+        tagId = inserted[0].id;
+      } else {
+        const [winner] = await db
+          .select({ id: tags.id })
+          .from(tags)
+          .where(and(eq(tags.vaultId, note.vaultId), sql`lower(${tags.name}) = ${name.toLowerCase()}`))
+          .limit(1);
+        tagId = winner?.id;
+      }
     }
+    if (!tagId) continue;
     await db.insert(noteTags).values({ noteId, tagId }).onConflictDoNothing();
   }
 }

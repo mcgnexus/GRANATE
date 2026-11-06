@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { attachments, shareLinks } from "@/lib/db/schema";
+import { attachments, notes, shareLinks } from "@/lib/db/schema";
 import { b2KeyFromRef, isB2Ref, signedB2Url } from "@/lib/storage";
 
 type Ctx = { params: Promise<{ token: string }> };
@@ -14,6 +14,7 @@ export async function GET(request: NextRequest, ctx: Ctx) {
   const [share] = await db
     .select({
       vaultId: shareLinks.vaultId,
+      noteId: shareLinks.noteId,
       expiresAt: shareLinks.expiresAt,
       revokedAt: shareLinks.revokedAt,
     })
@@ -23,6 +24,27 @@ export async function GET(request: NextRequest, ctx: Ctx) {
 
   if (!share || share.revokedAt || (share.expiresAt && share.expiresAt.getTime() < Date.now())) {
     return new Response("Enlace no válido", { status: 404 });
+  }
+
+  if (share.noteId) {
+    // Un enlace de una sola nota solo autoriza los adjuntos que esa nota
+    // referencia; además la nota debe seguir activa.
+    const [note] = await db
+      .select({ content: notes.content })
+      .from(notes)
+      .where(and(eq(notes.id, share.noteId), isNull(notes.deletedAt)))
+      .limit(1);
+    if (!note) return new Response("Enlace no válido", { status: 404 });
+
+    let haystack = note.content.toLowerCase();
+    try {
+      haystack = decodeURIComponent(haystack);
+    } catch {
+      // contenido con % literal sin codificar: se usa tal cual
+    }
+    if (!haystack.includes(path.toLowerCase())) {
+      return new Response("Adjunto no encontrado", { status: 404 });
+    }
   }
 
   const [row] = await db

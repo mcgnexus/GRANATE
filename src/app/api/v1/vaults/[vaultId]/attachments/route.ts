@@ -18,6 +18,15 @@ import {
 
 type Ctx = { params: Promise<{ vaultId: string }> };
 
+export function safePath(p: string) {
+  if (!p || p.length > 512) return false;
+  if (/[\u0000-\u001f\u007f]/.test(p)) return false;
+  if (p.includes("..") || p.includes("\\") || p.startsWith("/")) return false;
+  return p
+    .split("/")
+    .every((segment) => segment.length > 0 && segment !== "." && segment !== "..");
+}
+
 const MAX_BYTES = 10 * 1024 * 1024;
 
 function apiUrl(vaultId: string, row: { id: string }) {
@@ -65,6 +74,7 @@ export async function GET(request: NextRequest, ctx: Ctx) {
     const path = request.nextUrl.searchParams.get("path");
     const id = request.nextUrl.searchParams.get("id");
     if (!path && !id) return Response.json({ error: "Falta path o id" }, { status: 400 });
+    if (path && !safePath(path)) return Response.json({ error: "Path inválido" }, { status: 400 });
 
     const [row] = await db
       .select()
@@ -114,6 +124,9 @@ export async function POST(request: NextRequest, ctx: Ctx) {
     const path = form.get("path");
     if (!(file instanceof File) || typeof path !== "string") {
       return Response.json({ error: "Faltan file o path" }, { status: 400 });
+    }
+    if (!safePath(path)) {
+      return Response.json({ error: "Path inválido" }, { status: 400 });
     }
     if (file.size > MAX_BYTES) {
       return Response.json({ error: "El archivo supera 10 MB" }, { status: 413 });
@@ -197,6 +210,7 @@ export async function DELETE(request: NextRequest, ctx: Ctx) {
     const id = request.nextUrl.searchParams.get("id");
     const path = request.nextUrl.searchParams.get("path");
     if (!id && !path) return Response.json({ error: "Falta id o path" }, { status: 400 });
+    if (path && !safePath(path)) return Response.json({ error: "Path inválido" }, { status: 400 });
 
     const [row] = await db
       .select()

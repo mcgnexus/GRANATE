@@ -46,8 +46,11 @@ export function apiError(error: unknown) {
     return Response.json({ error: error.message }, { status: error.status });
   }
   console.error(error);
-  return Response.json(
-    { error: error instanceof Error ? error.message : "Error interno" },
-    { status: 500 },
-  );
+  const message =
+    process.env.NODE_ENV === "production"
+      ? "Error interno"
+      : error instanceof Error
+        ? error.message
+        : "Error interno";
+  return Response.json({ error: message }, { status: 500 });
 }
