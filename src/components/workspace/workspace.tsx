@@ -381,10 +381,6 @@ export function Workspace({ vault }: { vault: VaultAccess }) {
       counter += 1;
     }
 
-    const updated = removeSection(doc, found.sectionStart, found.sectionEnd);
-    setContent(updated);
-    await saveNow(updated);
-
     const response = await fetch(`/api/v1/vaults/${vault.id}/notes`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -395,7 +391,20 @@ export function Workspace({ vault }: { vault: VaultAccess }) {
       error?: string;
     };
     if (!response.ok || !data.note) {
-      showToast(data.error ?? "Se quitó la sección pero no se pudo crear la nota");
+      showToast(data.error ?? "No se pudo crear la nota con la sección extraída");
+      return;
+    }
+
+    if (latest.current.content !== doc) {
+      showToast("La nota cambió durante la extracción; la sección sigue en el original");
+      await loadTree();
+      return;
+    }
+    const updated = removeSection(doc, found.sectionStart, found.sectionEnd);
+    setContent(updated);
+    const saved = await saveNow(updated);
+    if (!saved) {
+      showToast("La nota se creó, pero no se pudo quitar la sección del original");
       return;
     }
     await loadTree();
@@ -461,7 +470,12 @@ export function Workspace({ vault }: { vault: VaultAccess }) {
   async function deleteActive() {
     if (!active || !canWrite) return;
     if (!window.confirm(`¿Mover «${active.title}» a la papelera?`)) return;
-    await fetch(`/api/v1/vaults/${vault.id}/notes/${active.id}`, { method: "DELETE" });
+    const response = await fetch(`/api/v1/vaults/${vault.id}/notes/${active.id}`, { method: "DELETE" });
+    if (!response.ok) {
+      const data = (await response.json().catch(() => ({}))) as { error?: string };
+      showToast(data.error ?? "No se pudo mover la nota a la papelera");
+      return;
+    }
     setActive(null);
     setContent("");
     await loadTree();
@@ -540,7 +554,11 @@ export function Workspace({ vault }: { vault: VaultAccess }) {
     if (nextPath.toLowerCase() === note.path.toLowerCase()) return;
 
     if (active?.id === noteId && content !== active.content) {
-      await saveNow();
+      const saved = await saveNow();
+      if (!saved) {
+        showToast("Guarda los cambios antes de mover la nota");
+        return;
+      }
     }
 
     const response = await fetch(`/api/v1/vaults/${vault.id}/notes/${noteId}`, {
@@ -619,7 +637,11 @@ export function Workspace({ vault }: { vault: VaultAccess }) {
       await moveNote(ids[0], folderPath);
     } else {
       if (active && ids.includes(active.id) && content !== active.content) {
-        await saveNow();
+        const saved = await saveNow();
+        if (!saved) {
+          showToast("Guarda los cambios antes de mover las notas");
+          return;
+        }
       }
       const result = await applyBatch("move", ids, { folder: folderPath });
       if (result) {
@@ -709,7 +731,12 @@ export function Workspace({ vault }: { vault: VaultAccess }) {
   async function removeNote(note: TreeNote) {
     if (!canWrite) return;
     if (!window.confirm(`¿Mover «${note.title}» a la papelera?`)) return;
-    await fetch(`/api/v1/vaults/${vault.id}/notes/${note.id}`, { method: "DELETE" });
+    const response = await fetch(`/api/v1/vaults/${vault.id}/notes/${note.id}`, { method: "DELETE" });
+    if (!response.ok) {
+      const data = (await response.json().catch(() => ({}))) as { error?: string };
+      showToast(data.error ?? "No se pudo mover la nota a la papelera");
+      return;
+    }
     if (active?.id === note.id) {
       setActive(null);
       setContent("");
@@ -781,12 +808,12 @@ export function Workspace({ vault }: { vault: VaultAccess }) {
     }
   }
 
-  function handleSelect(noteId: string, shift: boolean) {
+  function handleSelect(noteId: string, shift: boolean, orderedIds?: string[]) {
     setSelectionMode(true);
     setSelectedIds((previous) => {
       const next = new Set(previous);
       if (shift && lastSelectedId) {
-        const ids = tree.notes.map((note) => note.id);
+        const ids = orderedIds ?? tree.notes.map((note) => note.id);
         const from = ids.indexOf(lastSelectedId);
         const to = ids.indexOf(noteId);
         if (from !== -1 && to !== -1) {
@@ -1330,8 +1357,9 @@ views:
           </footer>
         </main>
 
-        {chatOpen ? (
-          <aside className="fixed inset-y-12 right-0 z-30 w-full max-w-[420px] border-l border-[var(--border)] bg-[var(--panel)] shadow-2xl lg:static lg:inset-auto lg:z-auto lg:w-[380px] lg:shadow-none">
+        <aside
+          className={`${chatOpen ? "" : "hidden"} fixed inset-y-12 right-0 z-30 w-full max-w-[420px] border-l border-[var(--border)] bg-[var(--panel)] shadow-2xl lg:static lg:inset-auto lg:z-auto lg:w-[380px] lg:shadow-none`}
+        >
             <div className="flex h-full flex-col">
               <div className="flex items-center gap-1 border-b border-[var(--border)] px-2 py-1.5">
                 <button
@@ -1358,7 +1386,7 @@ views:
                 </button>
               </div>
               <div className="min-h-0 flex-1">
-                {assistantTab === "ask" ? (
+                <div className={assistantTab === "ask" ? "h-full" : "hidden"}>
                   <ChatPanel
                     vaultId={vault.id}
                     onOpenNote={(path) => {
@@ -1366,17 +1394,18 @@ views:
                       setChatOpen(false);
                     }}
                   />
-                ) : (
+                </div>
+                <div className={assistantTab === "agent" ? "h-full" : "hidden"}>
                   <AgentPanel
                     vaultId={vault.id}
                     onChanged={() => void loadTree()}
                     onToast={showToast}
                   />
-                )}
+                </div>
               </div>
             </div>
           </aside>
-        ) : active ? (
+        {!chatOpen && active ? (
           <>
             {detailsOpen ? (
               <button

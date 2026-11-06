@@ -12,6 +12,11 @@ type Hit = {
   source: "fulltext" | "semantic" | "title";
 };
 
+function isAbort(error: unknown) {
+  if (error instanceof DOMException) return error.name === "AbortError";
+  return error instanceof Error && error.name === "AbortError";
+}
+
 export function SearchDialog({
   open,
   onClose,
@@ -28,30 +33,39 @@ export function SearchDialog({
   const [query, setQuery] = useState(initialQuery);
   const [hits, setHits] = useState<Hit[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const runId = useRef(0);
 
   useEffect(() => {
     if (open) window.setTimeout(() => inputRef.current?.focus(), 20);
   }, [open]);
 
+  const queryReady = query.trim().length >= 2;
+
   useEffect(() => {
-    if (!open || query.trim().length < 2) {
+    if (!open || !queryReady) {
       return;
     }
     const controller = new AbortController();
+    const currentRun = ++runId.current;
     const timer = window.setTimeout(async () => {
       setLoading(true);
+      setError(null);
+      setHits([]);
       try {
         const response = await fetch(
           `/api/v1/vaults/${vaultId}/search?q=${encodeURIComponent(query)}&limit=20`,
           { signal: controller.signal },
         );
+        if (!response.ok) throw new Error("search failed");
         const data = (await response.json()) as { hits?: Hit[] };
         setHits(data.hits ?? []);
-      } catch {
-        // aborted
+      } catch (caught) {
+        if (isAbort(caught)) return;
+        setError("No se pudo completar la búsqueda. Comprueba tu conexión e inténtalo de nuevo.");
       } finally {
-        setLoading(false);
+        if (runId.current === currentRun) setLoading(false);
       }
     }, 220);
 
@@ -59,27 +73,35 @@ export function SearchDialog({
       controller.abort();
       window.clearTimeout(timer);
     };
-  }, [query, open, vaultId]);
+  }, [query, queryReady, open, vaultId]);
 
   return (
     <Modal open={open} onClose={onClose} title="Buscar en la bóveda" subtitle="Full-text + semántica">
       <div className="p-4">
         <div className="relative">
-          <Search size={15} className="absolute left-3 top-3 text-[var(--muted)]" />
+          <Search size={15} className="absolute left-3 top-3 text-[var(--muted)]" aria-hidden="true" />
           <input
             ref={inputRef}
+            type="search"
+            aria-label="Buscar en la bóveda"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Busca una idea, una ruta o una etiqueta…"
             className="input pl-9"
           />
           {loading ? (
-            <Loader2 size={15} className="absolute right-3 top-3 animate-spin text-[var(--muted)]" />
+            <Loader2 size={15} className="absolute right-3 top-3 animate-spin text-[var(--muted)]" aria-hidden="true" />
+          ) : null}
+        </div>
+
+        <div aria-live="polite">
+          {error && queryReady ? (
+            <p className="px-3 py-8 text-center text-xs leading-5 text-red-400">{error}</p>
           ) : null}
         </div>
 
         <div className="scrollbar mt-4 max-h-[55dvh] space-y-1 overflow-y-auto">
-          {query.trim().length >= 2
+          {!error && queryReady
             ? hits.map((hit) => (
             <button
               key={`${hit.id}-${hit.source}`}
@@ -91,7 +113,7 @@ export function SearchDialog({
               className="w-full rounded-lg border border-transparent px-3 py-2.5 text-left transition-colors hover:border-[var(--border)] hover:bg-[var(--panel-2)]"
             >
               <div className="flex items-center gap-2">
-                <FileText size={13} className="text-[var(--accent-2)]" />
+                <FileText size={13} className="text-[var(--accent-2)]" aria-hidden="true" />
                 <span className="truncate text-sm">{hit.title}</span>
                 <span className="ml-auto chip text-[9px]">
                   {hit.source === "semantic" ? "semántica" : hit.source === "fulltext" ? "texto" : "título"}
@@ -107,12 +129,12 @@ export function SearchDialog({
               ))
             : null}
 
-          {!loading && query.trim().length >= 2 && hits.length === 0 ? (
+          {!loading && !error && queryReady && hits.length === 0 ? (
             <p className="px-3 py-8 text-center text-xs text-[var(--muted)]">
               Sin resultados. Prueba otra palabra o activa embeddings.
             </p>
           ) : null}
-          {query.trim().length < 2 ? (
+          {!queryReady ? (
             <p className="px-3 py-8 text-center text-xs text-[var(--muted)]">
               Escribe al menos 2 caracteres. Se buscan títulos, contenido y significado.
             </p>

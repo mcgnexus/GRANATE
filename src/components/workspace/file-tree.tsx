@@ -58,7 +58,7 @@ export type FileTreeActions = {
   onToggleFavorite: (note: TreeNote) => void;
   onRenameFolder: (path: string) => void;
   onDeleteFolder: (path: string) => void;
-  onSelect: (noteId: string, shift: boolean) => void;
+  onSelect: (noteId: string, shift: boolean, orderedIds?: string[]) => void;
   onToggleSelection: () => void;
   onSelectAll: () => void;
   onClearSelection: () => void;
@@ -330,7 +330,7 @@ export function FileTree({
           onClick={(event) => {
             if (selectionMode || event.ctrlKey || event.metaKey || event.shiftKey) {
               event.preventDefault();
-              actions.onSelect(note.id, event.shiftKey);
+              actions.onSelect(note.id, event.shiftKey, visibleOrder);
               return;
             }
             actions.onOpen(note);
@@ -439,6 +439,19 @@ export function FileTree({
   }
 
   const activeViewNotes = smartView && views ? views[smartView] : null;
+
+  const visibleOrder = useMemo(() => {
+    if (activeViewNotes) return activeViewNotes.map((note) => note.id);
+    const ids: string[] = [];
+    const walk = (node: FolderNode) => {
+      for (const child of node.children) {
+        if (child.kind === "note") ids.push(child.id);
+        else if (expanded.has(child.path)) walk(child);
+      }
+    };
+    walk(tree);
+    return ids;
+  }, [activeViewNotes, tree, expanded]);
 
   return (
     <div className="flex h-full flex-col">
