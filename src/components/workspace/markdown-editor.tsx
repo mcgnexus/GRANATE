@@ -32,6 +32,7 @@ import {
   ListOrdered,
   ListTodo,
   MessageSquareText,
+  MoreHorizontal,
   Pencil,
   Pilcrow,
   Sigma,
@@ -42,6 +43,8 @@ import {
   Type,
 } from "lucide-react";
 import { ContextMenu, type MenuEntry } from "@/components/ui/context-menu";
+import { ContextBottomSheet } from "@/components/ui/context-bottom-sheet";
+import { useCoarsePointer } from "@/hooks/use-coarse-pointer";
 import {
   findHeadingSection,
   renameHeadingRange,
@@ -106,7 +109,8 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(function M
   const saveRef = useRef(onSave);
   const extractRef = useRef(onExtractSection);
   const toastRef = useRef(onToast);
-  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const coarsePointer = useCoarsePointer();
+  const [menu, setMenu] = useState<{ x: number; y: number } | { sheet: true } | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [linkModal, setLinkModal] = useState<LinkModalState | null>(null);
   const [renameModal, setRenameModal] = useState<RenameModalState | null>(null);
@@ -365,6 +369,9 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(function M
 
   /** Cursor en el punto pulsado antes de abrir el menú (UX estándar de editores). */
   function handleContextMenu(event: React.MouseEvent<HTMLDivElement>) {
+    // En táctil no se intercepta el long-press: es el gesto de selección
+    // nativa y el menú se abre solo con el botón explícito de acciones.
+    if (coarsePointer) return;
     event.preventDefault();
     if (readOnly) return;
     const view = viewRef.current;
@@ -605,10 +612,29 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(function M
   }, [value]);
 
   return (
-    <div className="h-full overflow-hidden" onContextMenu={handleContextMenu}>
+    <div className="relative h-full overflow-hidden" onContextMenu={handleContextMenu}>
       <div ref={host} className="cm-host h-full" />
 
-      {menu && !readOnly ? (
+      {coarsePointer && !readOnly ? (
+        <button
+          type="button"
+          aria-label="Abrir acciones de formato"
+          title="Acciones de formato"
+          onClick={() => setMenu({ sheet: true })}
+          className="panel absolute bottom-4 right-4 z-10 grid h-11 w-11 place-items-center rounded-full shadow-2xl"
+        >
+          <MoreHorizontal size={18} />
+        </button>
+      ) : null}
+
+      {menu && !readOnly && "sheet" in menu ? (
+        <ContextBottomSheet
+          title="Acciones de formato"
+          entries={buildMenuEntries()}
+          onClose={() => setMenu(null)}
+        />
+      ) : null}
+      {menu && !readOnly && "x" in menu ? (
         <ContextMenu
           x={menu.x}
           y={menu.y}

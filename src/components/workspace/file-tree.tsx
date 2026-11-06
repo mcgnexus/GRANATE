@@ -25,6 +25,8 @@ import {
   X,
 } from "lucide-react";
 import { ContextMenu, type MenuEntry } from "@/components/ui/context-menu";
+import { ContextBottomSheet } from "@/components/ui/context-bottom-sheet";
+import { useCoarsePointer } from "@/hooks/use-coarse-pointer";
 
 export type TreeNote = {
   id: string;
@@ -153,17 +155,17 @@ export function FileTree({
   actions: FileTreeActions;
 }) {
   const tree = useMemo(() => buildNodes(notes, folders), [notes, folders]);
+  const coarsePointer = useCoarsePointer();
   const allFolders = useMemo(() => new Set(folders.filter(Boolean)), [folders]);
   const [expanded, setExpanded] = useState<Set<string>>(allFolders);
   const knownFolders = useRef<Set<string>>(allFolders);
   const [dragOver, setDragOver] = useState<string | null>(null);
   const [smartView, setSmartView] = useState<SmartViewKey | null>(null);
-  const [menu, setMenu] = useState<{
-    x: number;
-    y: number;
-    note?: TreeNote;
-    folder?: string;
-  } | null>(null);
+  const [menu, setMenu] = useState<
+    | { x: number; y: number; note?: TreeNote; folder?: string }
+    | { sheet: true; note?: TreeNote; folder?: string }
+    | null
+  >(null);
 
   useEffect(() => {
     const nextKnown = new Set(folders.filter(Boolean));
@@ -200,6 +202,8 @@ export function FileTree({
   }
 
   function openNoteMenu(event: React.MouseEvent, note: TreeNote) {
+    // En táctil el menú solo se abre con el botón explícito (···).
+    if (coarsePointer) return;
     event.preventDefault();
     event.stopPropagation();
     setMenu({ x: event.clientX, y: event.clientY, note });
@@ -208,11 +212,17 @@ export function FileTree({
   function openNoteMenuFromButton(event: React.MouseEvent, note: TreeNote) {
     event.preventDefault();
     event.stopPropagation();
+    if (coarsePointer) {
+      setMenu({ sheet: true, note });
+      return;
+    }
     const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
     setMenu({ x: rect.right - 8, y: rect.bottom + 4, note });
   }
 
   function openFolderMenu(event: React.MouseEvent, path: string) {
+    // En táctil el menú solo se abre con el botón explícito (···).
+    if (coarsePointer) return;
     event.preventDefault();
     event.stopPropagation();
     setMenu({ x: event.clientX, y: event.clientY, folder: path });
@@ -221,6 +231,10 @@ export function FileTree({
   function openFolderMenuFromButton(event: React.MouseEvent, path: string) {
     event.preventDefault();
     event.stopPropagation();
+    if (coarsePointer) {
+      setMenu({ sheet: true, folder: path });
+      return;
+    }
     const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
     setMenu({ x: rect.right - 8, y: rect.bottom + 4, folder: path });
   }
@@ -663,7 +677,18 @@ export function FileTree({
         </div>
       ) : null}
 
-      {menu ? (
+      {menu && "sheet" in menu ? (
+        <ContextBottomSheet
+          title={
+            menu.note
+              ? menu.note.path.split("/").pop()?.replace(/\.md$/, "") ?? "Acciones"
+              : menu.folder || "Acciones"
+          }
+          entries={menu.note ? noteEntries(menu.note) : folderEntries(menu.folder ?? "")}
+          onClose={() => setMenu(null)}
+        />
+      ) : null}
+      {menu && "x" in menu ? (
         <ContextMenu
           x={menu.x}
           y={menu.y}
