@@ -46,7 +46,8 @@ export function parseLinks(body: string): ParsedLink[] {
     const href = match[3].trim();
     if (href.startsWith("http") || href.startsWith("#") || href.startsWith("mailto:")) continue;
     if (!/\.md($|[?#])/i.test(href)) continue;
-    const decoded = decodeURIComponent(href.split("#")[0]);
+    let decoded = href.split("#")[0];
+    try { decoded = decodeURIComponent(decoded); } catch { /* keep raw */ }
     const heading = href.includes("#") ? href.split("#").slice(1).join("#") : null;
     links.push({
       rawTarget: href,

@@ -66,11 +66,27 @@ export async function GET(request: NextRequest, ctx: Ctx) {
   if (!row.data) return new Response("Adjunto no encontrado", { status: 404 });
 
   const bytes = Buffer.from(row.data, "base64");
+  const SAFE_MIMES = new Set([
+    "application/pdf",
+    "image/png",
+    "image/jpeg",
+    "image/gif",
+    "image/webp",
+    "image/avif",
+    "text/plain",
+    "text/markdown",
+    "application/json",
+    "application/zip",
+  ]);
+  const mime = SAFE_MIMES.has(row.mime) ? row.mime : "application/octet-stream";
+  const filename = (row.path.split("/").pop() || "attachment").replace(/"/g, "");
   return new Response(bytes as unknown as BodyInit, {
     headers: {
-      "Content-Type": row.mime,
+      "Content-Type": mime,
       "Content-Length": String(bytes.byteLength),
       "Cache-Control": "public, max-age=3600",
+      "Content-Disposition": `attachment; filename="${filename}"`,
+      "Content-Security-Policy": "default-src 'none'; sandbox",
       "X-Content-Type-Options": "nosniff",
     },
   });

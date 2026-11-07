@@ -57,6 +57,10 @@ export async function GET(request: Request) {
 
     let userId = existing[0]?.id;
 
+    if (existing[0] && !profile.email_verified) {
+      return Response.redirect(`${appUrl()}/login?error=google_unverified`);
+    }
+
     if (!userId) {
       if (!config.openRegistration) {
         return Response.redirect(`${appUrl()}/login?error=closed`);

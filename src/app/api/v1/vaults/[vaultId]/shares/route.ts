@@ -70,6 +70,11 @@ export async function POST(request: NextRequest, ctx: Ctx) {
         )
         .limit(1);
       if (!note) return Response.json({ error: "Nota no encontrada" }, { status: 404 });
+    } else {
+      // Un enlace de bóveda completa solo puede crearlo el propietario.
+      if (access.vault.role !== "owner") {
+        return Response.json({ error: "Solo el propietario puede compartir la bóveda completa" }, { status: 403 });
+      }
     }
 
     const days = Number(body.expiresInDays ?? 0);

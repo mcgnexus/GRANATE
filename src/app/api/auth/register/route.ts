@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { sql } from "drizzle-orm";
 import { db } from "@/lib/db";
+import { checkRateLimit } from "@/lib/rate-limit";
 import { users } from "@/lib/db/schema";
 import { hashPassword } from "@/lib/auth/password";
 import { createSession } from "@/lib/auth/session";
@@ -19,6 +20,10 @@ const schema = z.object({
 });
 
 export async function POST(request: Request) {
+  const ip = request.headers.get("x-forwarded-for") || "unknown";
+  if (!checkRateLimit("register:" + ip, 5, 60_000)) {
+    return Response.json({ error: "Demasiados intentos." }, { status: 429 });
+  }
   try {
     if (!config.openRegistration) {
       return Response.json({ error: "El registro está cerrado. Pide una invitación." }, { status: 403 });

@@ -56,7 +56,7 @@ export async function createBackup(options: {
     const token = process.env.BLOB_READ_WRITE_TOKEN;
     if (!token) throw new ApiError("BLOB_READ_WRITE_TOKEN no configurado", 400);
     const blob = await put(path, Buffer.from(bytes), {
-      access: "public",
+      access: "private",
       addRandomSuffix: true,
       contentType: "application/zip",
       token,

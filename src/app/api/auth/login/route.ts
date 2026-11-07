@@ -5,6 +5,7 @@ import { users } from "@/lib/db/schema";
 import { verifyPassword } from "@/lib/auth/password";
 import { createSession } from "@/lib/auth/session";
 import { config } from "@/lib/config";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 const schema = z.object({
   email: z.string().trim().email(),
@@ -12,6 +13,10 @@ const schema = z.object({
 });
 
 export async function POST(request: Request) {
+  const ip = request.headers.get("x-forwarded-for") || "unknown";
+  if (!checkRateLimit("login:" + ip, 10, 60_000)) {
+    return Response.json({ error: "Demasiados intentos." }, { status: 429 });
+  }
   try {
     const parsed = schema.safeParse(await request.json());
     if (!parsed.success) {
