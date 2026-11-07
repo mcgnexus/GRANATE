@@ -6,39 +6,43 @@ import { Modal } from "@/components/ui/modal";
 
 type Task = { noteId: string; path: string; text: string; done: boolean; line: number };
 
-export function TasksPanel({
-  open,
+function TasksPanelInner({
   onClose,
   vaultId,
   onOpenNote,
 }: {
-  open: boolean;
   onClose: () => void;
   vaultId: string;
   onOpenNote: (path: string) => void;
 }) {
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [tasks, setTasks] = useState<Task[] | null>(null);
   const [filter, setFilter] = useState<"all" | "todo" | "done">("todo");
 
   useEffect(() => {
-    if (!open) return;
-    setLoading(true);
+    let cancelled = false;
     fetch(`/api/v1/vaults/${vaultId}/tasks`)
       .then(async (r) => {
-        if (!r.ok) return;
+        if (!r.ok) return [];
         const data = (await r.json()) as { tasks?: Task[] };
-        setTasks(data.tasks ?? []);
+        return data.tasks ?? [];
       })
-      .finally(() => setLoading(false));
-  }, [open, vaultId]);
+      .then((result) => {
+        if (!cancelled) setTasks(result);
+      })
+      .catch(() => {
+        if (!cancelled) setTasks([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [vaultId]);
 
-  const visible = tasks.filter((task) =>
+  const visible = (tasks ?? []).filter((task) =>
     filter === "all" ? true : filter === "todo" ? !task.done : task.done,
   );
 
   return (
-    <Modal open={open} onClose={onClose} title="Tareas de la bóveda" subtitle="Checkboxes de todas las notas">
+    <Modal open onClose={onClose} title="Tareas de la bóveda" subtitle="Checkboxes de todas las notas">
       <div className="p-4">
         <div className="mb-3 flex gap-1">
           {(["todo", "done", "all"] as const).map((value) => (
@@ -52,8 +56,8 @@ export function TasksPanel({
             </button>
           ))}
         </div>
-        {loading ? (
-          <p className="px-3 py-6 text-center text-xs text-[var(--muted)]">Cargando...</p>
+        {tasks === null ? (
+          <p className="px-3 py-6 text-center text-xs text-[var(--muted)]">Cargando…</p>
         ) : visible.length === 0 ? (
           <p className="px-3 py-6 text-center text-xs text-[var(--muted)]">Sin tareas.</p>
         ) : (
@@ -88,4 +92,19 @@ export function TasksPanel({
       </div>
     </Modal>
   );
+}
+
+export function TasksPanel({
+  open,
+  onClose,
+  vaultId,
+  onOpenNote,
+}: {
+  open: boolean;
+  onClose: () => void;
+  vaultId: string;
+  onOpenNote: (path: string) => void;
+}) {
+  if (!open) return null;
+  return <TasksPanelInner onClose={onClose} vaultId={vaultId} onOpenNote={onOpenNote} />;
 }

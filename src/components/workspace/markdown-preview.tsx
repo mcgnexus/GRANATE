@@ -124,6 +124,8 @@ function editable(tag: string) {
       tag,
       {
         ...props,
+        ...(sourceStart !== undefined ? { "data-src-start": String(sourceStart) } : {}),
+        ...(sourceEnd !== undefined ? { "data-src-end": String(sourceEnd) } : {}),
         onClick: context.canEdit ? onClick : props.onClick,
         onKeyDown: context.canEdit ? onKeyDown : props.onKeyDown,
         tabIndex: context.canEdit ? 0 : props.tabIndex,
@@ -136,9 +138,9 @@ function editable(tag: string) {
 
 function PreviewAnchor({ href, children, className }: React.ComponentProps<"a">) {
   const context = useContext(PreviewContext);
+  const vaultId = useContext(VaultIdContext);
   if (href?.startsWith("granate:") && context) {
     const path = decodeURIComponent(href.slice("granate:".length));
-    const vaultId = useContext(VaultIdContext);
     return (
       <HoverPreview vaultId={vaultId} path={path}>
         <a
@@ -220,7 +222,6 @@ const PREVIEW_COMPONENTS = {
 
 
 function MermaidDiagram({ code }: { code: string }) {
-  const ref = useRef<HTMLDivElement>(null);
   const [svg, setSvg] = useState("");
   const [error, setError] = useState("");
   useEffect(() => {

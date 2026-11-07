@@ -24,7 +24,7 @@ import {
   Trash2,
   Upload,
   Eye,
-} from "lucide-react";
+  Columns2 } from "lucide-react";
 import { FileTree, type TreeBase, type TreeCanvas, type TreeNote, type TreeSmartViews } from "./file-tree";
 import { FolderPicker } from "./folder-picker";
 import { MarkdownEditor, type MarkdownEditorHandle } from "./markdown-editor";
@@ -89,14 +89,123 @@ export function Workspace({ vault }: { vault: VaultAccess }) {
   const [bases, setBases] = useState<TreeBase[]>([]);
   const [active, setActive] = useState<NoteDetail | null>(null);
   const [content, setContent] = useState("");
-  const [mode, setMode] = useState<"edit" | "preview">("preview");
+  const loadLayoutPref = (key: string): string | null => {
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+};
+
+const [mode, setMode] = useState<"edit" | "preview" | "split">(() => {
+  const stored = typeof window === "undefined" ? null : loadLayoutPref("granate.mode");
+  return stored === "split" || stored === "edit" || stored === "preview" ? stored : "preview";
+});
   const [vimMode, setVimMode] = useState(() => (typeof window !== "undefined" && window.localStorage.getItem("granate.vimMode") === "1"));
+  const [splitRatio, setSplitRatio] = useState(() => {
+  const stored = typeof window === "undefined" ? null : loadLayoutPref("granate.splitRatio");
+  const value = Number.parseFloat(stored ?? "");
+  return Number.isFinite(value) && value >= 0.2 && value <= 0.8 ? value : 0.5;
+});
+  const [splitMobileTab, setSplitMobileTab] = useState<"markdown" | "preview">("markdown");
+  const [syncScroll, setSyncScroll] = useState(() => {
+  const stored = typeof window === "undefined" ? null : loadLayoutPref("granate.syncScroll");
+  return stored === null ? true : stored === "1";
+});
+  const previewScrollRef = useRef<HTMLDivElement>(null);
+  const splitContainerRef = useRef<HTMLDivElement>(null);
+  const lastSyncRef = useRef<{ by: "editor" | "preview"; at: number }>({ by: "editor", at: 0 });
+  const syncRafRef = useRef(0);
   const [view, setView] = useState<"note" | "canvas" | "base">("note");
   const [canvasTarget, setCanvasTarget] = useState<TreeCanvas | null>(null);
   const [baseTarget, setBaseTarget] = useState<TreeBase | null>(null);
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [rightTab, setRightTab] = useState<"details" | "ai" | "files">("details");
   useEffect(() => { if (typeof window !== "undefined") window.localStorage.setItem("granate.vimMode", vimMode ? "1" : "0"); }, [vimMode]);
+  useEffect(() => {
+    try {
+      window.localStorage.setItem("granate.mode", mode);
+      window.localStorage.setItem("granate.splitRatio", String(splitRatio));
+      window.localStorage.setItem("granate.syncScroll", syncScroll ? "1" : "0");
+    } catch {
+      // almacenamiento no disponible
+    }
+  }, [mode, splitRatio, syncScroll]);
+
+  const handleEditorViewportScroll = useCallback((topOffset: number) => {
+    if (!syncScroll || mode !== "split") return;
+    const now = Date.now();
+    if (lastSyncRef.current.by === "preview" && now - lastSyncRef.current.at < 150) return;
+    lastSyncRef.current = { by: "editor", at: now };
+    if (syncRafRef.current) return;
+    syncRafRef.current = window.requestAnimationFrame(() => {
+      syncRafRef.current = 0;
+      const container = previewScrollRef.current;
+      if (!container) return;
+      const blocks = container.querySelectorAll<HTMLElement>("[data-src-start]");
+      let target: HTMLElement | null = null;
+      for (const block of blocks) {
+        const start = Number(block.dataset.srcStart);
+        if (Number.isFinite(start) && start <= topOffset + 1) target = block;
+        else break;
+      }
+      if (target) container.scrollTop = target.offsetTop - container.offsetTop - 4;
+    });
+  }, [syncScroll, mode]);
+
+  const handlePreviewScroll = useCallback(() => {
+    if (!syncScroll || mode !== "split") return;
+    const now = Date.now();
+    if (lastSyncRef.current.by === "editor" && now - lastSyncRef.current.at < 150) return;
+    lastSyncRef.current = { by: "preview", at: now };
+    if (syncRafRef.current) return;
+    syncRafRef.current = window.requestAnimationFrame(() => {
+      syncRafRef.current = 0;
+      const container = previewScrollRef.current;
+      if (!container) return;
+      const blocks = container.querySelectorAll<HTMLElement>("[data-src-start]");
+      let visible: HTMLElement | null = null;
+      for (const block of blocks) {
+        if (block.offsetTop + block.offsetHeight > container.scrollTop + 4) {
+          visible = block;
+          break;
+        }
+      }
+      if (visible) {
+        const start = Number(visible.dataset.srcStart);
+        if (Number.isFinite(start)) editorRef.current?.scrollToOffset(start);
+      }
+    });
+  }, [syncScroll, mode]);
+
+  const handlePreviewChange = useCallback((updated: string) => {
+    if (mode === "split" && editorRef.current) {
+      editorRef.current.applyExternalChange(updated);
+      setContent(updated);
+    } else {
+      setContent(updated);
+    }
+  }, [mode]);
+
+  const startResizerDrag = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const container = splitContainerRef.current;
+    const target = event.currentTarget;
+    target.setPointerCapture(event.pointerId);
+    const move = (moveEvent: PointerEvent) => {
+      if (!container) return;
+      const bounds = container.getBoundingClientRect();
+      const next = (moveEvent.clientX - bounds.left) / bounds.width;
+      setSplitRatio(Math.min(0.8, Math.max(0.2, next)));
+    };
+    const up = () => {
+      target.releasePointerCapture(event.pointerId);
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  }, []);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchSeed, setSearchSeed] = useState("");
@@ -159,6 +268,8 @@ export function Workspace({ vault }: { vault: VaultAccess }) {
     { id: "new-folder", label: "Nueva carpeta", run: () => openNewFolder() },
     { id: "daily", label: "Nota de hoy", run: () => void openDailyNote() },
     { id: "graph", label: "Abrir grafo global", run: () => setGraphOpen(true) },
+    { id: "split", label: "Vista en paralelo (Markdown y editable)", run: () => setMode("split") },
+    { id: "toggle-sync-scroll", label: syncScroll ? "Desactivar scroll sincronizado" : "Activar scroll sincronizado", run: () => setSyncScroll((value) => !value) },
     { id: "local-graph", label: "Grafo local de la nota activa", run: () => setLocalGraphOpen(true) },
     { id: "chat", label: "Abrir asistente", run: () => setChatOpen(true) },
     { id: "settings", label: "Ajustes", run: () => setSettingsOpen(true) },
@@ -1308,26 +1419,25 @@ views:
                             ? "error"
                             : "guardado"}
                   </span>
-                  {mode === "preview" ? (
+                  {(
+                    [
+                      { key: "edit", label: "Editar", icon: PencilLine, title: "Documento Markdown completo" },
+                      { key: "split", label: "Paralelo", icon: Columns2, title: "Markdown y vista editable en paralelo" },
+                      { key: "preview", label: "Vista", icon: Eye, title: "Vista previa editable" },
+                    ] as const
+                  ).map(({ key, label, icon: Icon, title }) => (
                     <button
+                      key={key}
                       type="button"
-                      onClick={() => setMode("edit")}
-                      className="btn btn-ghost h-7 px-2 text-[11px]"
-                      title="Abrir el documento Markdown completo"
+                      onClick={() => setMode(key)}
+                      className={`btn h-7 gap-1 px-2 text-[11px] ${mode === key ? "bg-[var(--accent-soft)]" : "btn-ghost"}`}
+                      title={title}
+                      aria-pressed={mode === key}
                     >
-                      <PencilLine size={12} />
-                      <span className="hidden sm:inline">Editar Markdown</span>
+                      <Icon size={12} />
+                      <span className="hidden sm:inline">{label}</span>
                     </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => setMode("preview")}
-                      className="btn btn-ghost h-7 px-2 text-[11px]"
-                      title="Volver a la vista previa editable"
-                    >
-                      <Eye size={12} /> <span className="hidden sm:inline">Vista previa</span>
-                    </button>
-                  )}
+                  ))}
                   <button type="button" onClick={() => void saveNow()} className="btn btn-ghost h-7 w-7 p-0" title="Guardar (Ctrl+S)">
                     <Save size={13} />
                   </button>
@@ -1383,9 +1493,101 @@ views:
                         vimMode={vimMode}
                         notes={tree.notes}
                         activeNoteId={active.id}
+                        onViewportScroll={handleEditorViewportScroll}
                         onExtractSection={(section) => void extractSection(section)}
                         onToast={showToast}
                       />
+                    </div>
+                  </>
+                ) : mode === "split" ? (
+                  <>
+                    {canWrite ? (
+                      <EditorToolbar
+                        editorRef={editorRef}
+                        vaultId={vault.id}
+                        notes={tree.notes}
+                        tags={tree.tags}
+                        activeNoteId={active.id}
+                        onToast={showToast}
+                      />
+                    ) : null}
+                    <div className="flex gap-1 lg:hidden" role="tablist" aria-label="Paneles en paralelo">
+                      <button
+                        type="button"
+                        role="tab"
+                        aria-selected={splitMobileTab === "markdown"}
+                        onClick={() => setSplitMobileTab("markdown")}
+                        className={`btn h-7 flex-1 justify-center text-[11px] ${splitMobileTab === "markdown" ? "bg-[var(--accent-soft)]" : "btn-ghost"}`}
+                      >
+                        Markdown
+                      </button>
+                      <button
+                        type="button"
+                        role="tab"
+                        aria-selected={splitMobileTab === "preview"}
+                        onClick={() => setSplitMobileTab("preview")}
+                        className={`btn h-7 flex-1 justify-center text-[11px] ${splitMobileTab === "preview" ? "bg-[var(--accent-soft)]" : "btn-ghost"}`}
+                      >
+                        Vista editable
+                      </button>
+                    </div>
+                    <div ref={splitContainerRef} className="relative flex min-h-0 flex-1 flex-col lg:flex-row">
+                      <div
+                        className={`${splitMobileTab === "markdown" ? "flex min-h-0 min-w-0" : "hidden lg:flex"} flex-col`}
+                        style={{ flexGrow: splitRatio, flexBasis: "0%" }}
+                      >
+                        <MarkdownEditor
+                          ref={editorRef}
+                          value={content}
+                          onChange={setContent}
+                          readOnly={!canWrite}
+                          onSave={() => void saveNow()}
+                          vimMode={vimMode}
+                          notes={tree.notes}
+                          activeNoteId={active.id}
+                          onViewportScroll={handleEditorViewportScroll}
+                          onExtractSection={(section) => void extractSection(section)}
+                          onToast={showToast}
+                        />
+                      </div>
+                      <div
+                        role="separator"
+                        aria-orientation="vertical"
+                        aria-label="Ajustar ancho de paneles"
+                        tabIndex={0}
+                        onPointerDown={startResizerDrag}
+                        onKeyDown={(event) => {
+                          if (event.key === "ArrowLeft") {
+                            event.preventDefault();
+                            setSplitRatio((ratio) => Math.max(0.2, ratio - 0.05));
+                          } else if (event.key === "ArrowRight") {
+                            event.preventDefault();
+                            setSplitRatio((ratio) => Math.min(0.8, ratio + 0.05));
+                          }
+                        }}
+                        className="hidden w-1 shrink-0 cursor-col-resize bg-transparent transition-colors hover:bg-[var(--border)] focus-visible:bg-[var(--accent)] lg:block"
+                        title="Arrastra o usa las flechas para ajustar el ancho"
+                      />
+                      <div
+                        className={`${splitMobileTab === "preview" ? "flex min-h-0 min-w-0" : "hidden lg:flex"} flex-col`}
+                        style={{ flexGrow: 1 - splitRatio, flexBasis: "0%" }}
+                      >
+                        <div
+                          ref={previewScrollRef}
+                          onScroll={handlePreviewScroll}
+                          className="scrollbar relative min-h-0 flex-1 overflow-y-auto"
+                        >
+                          <MarkdownPreview
+                            key={active.id}
+                            content={content}
+                            vaultId={vault.id}
+                            onOpenNote={openByPath}
+                            canEdit={canWrite}
+                            onChange={handlePreviewChange}
+                            onEditConflict={() => showToast("El bloque cambió; vuelve a pulsarlo para editarlo")}
+                          />
+                        </div>
+                      </div>
                     </div>
                   </>
                 ) : (
@@ -1396,7 +1598,7 @@ views:
                       vaultId={vault.id}
                       onOpenNote={openByPath}
                       canEdit={canWrite}
-                      onChange={setContent}
+                      onChange={handlePreviewChange}
                       onEditConflict={() => showToast("El bloque cambió; vuelve a pulsarlo para editarlo")}
                     />
                   </div>

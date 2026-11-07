@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Hash, ChevronRight, ChevronDown } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 

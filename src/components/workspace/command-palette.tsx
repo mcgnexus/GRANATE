@@ -12,12 +12,10 @@ export type CommandEntry = {
   run: () => void;
 };
 
-export function CommandPalette({
-  open,
+function CommandPaletteInner({
   onClose,
   commands,
 }: {
-  open: boolean;
   onClose: () => void;
   commands: CommandEntry[];
 }) {
@@ -25,11 +23,8 @@ export function CommandPalette({
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (open) {
-      setQuery("");
-      window.setTimeout(() => inputRef.current?.focus(), 20);
-    }
-  }, [open]);
+    window.setTimeout(() => inputRef.current?.focus(), 20);
+  }, []);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -38,17 +33,17 @@ export function CommandPalette({
   }, [commands, query]);
 
   return (
-    <Modal open={open} onClose={onClose} title="Paleta de comandos" subtitle="Escribe para filtrar">
+    <Modal open onClose={onClose} title="Paleta de comandos" subtitle="Escribe para filtrar">
       <div className="p-4">
         <div className="relative">
-          <Search size={15} className="absolute left-3 top-3 text-[var(--muted)]" />
+          <Search size={15} className="absolute left-3 top-3 text-[var(--muted)]" aria-hidden="true" />
           <input
             ref={inputRef}
             type="text"
             aria-label="Paleta de comandos"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Buscar comando..."
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Buscar comando…"
             className="input pl-9"
             onKeyDown={(event) => {
               if (event.key === "Enter" && filtered[0]) {
@@ -72,11 +67,9 @@ export function CommandPalette({
                 }}
                 className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-[var(--panel-2)]"
               >
-                <Command size={13} className="shrink-0 text-[var(--muted)]" />
+                <Command size={13} className="shrink-0 text-[var(--muted)]" aria-hidden="true" />
                 <span className="min-w-0 flex-1 truncate">{command.label}</span>
-                {command.group ? (
-                  <span className="chip text-[9px]">{command.group}</span>
-                ) : null}
+                {command.group ? <span className="chip text-[9px]">{command.group}</span> : null}
                 {command.shortcut ? (
                   <span className="text-[10px] text-[var(--muted)]">{command.shortcut}</span>
                 ) : null}
@@ -87,4 +80,17 @@ export function CommandPalette({
       </div>
     </Modal>
   );
+}
+
+export function CommandPalette({
+  open,
+  onClose,
+  commands,
+}: {
+  open: boolean;
+  onClose: () => void;
+  commands: CommandEntry[];
+}) {
+  if (!open) return null;
+  return <CommandPaletteInner onClose={onClose} commands={commands} />;
 }

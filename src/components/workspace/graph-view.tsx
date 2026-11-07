@@ -103,7 +103,7 @@ export function GraphView({
       active = false;
       simulationRef.current?.stop();
     };
-  }, [vaultId]);
+  }, [vaultId, centerId, local]);
 
   if (loading) {
     return (

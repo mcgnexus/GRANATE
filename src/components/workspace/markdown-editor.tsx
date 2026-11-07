@@ -2,8 +2,8 @@
 
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { EditorView, keymap, lineNumbers, highlightActiveLineGutter } from "@codemirror/view";
-import { foldGutter, indentOnInput, bracketMatching as bm } from "@codemirror/language";
-import { EditorState } from "@codemirror/state";
+import { foldGutter } from "@codemirror/language";
+import { Annotation, EditorState } from "@codemirror/state";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { languages } from "@codemirror/language-data";
@@ -64,6 +64,12 @@ export type MarkdownEditorHandle = {
   insertText: (text: string) => void;
   applyHeading: (level: number) => void;
   focus: () => void;
+  /** Reemplaza el documento como transacción del historial compartido (sin eco si el texto coincide). */
+  applyExternalChange: (nextText: string) => void;
+  /** Desplaza el editor para que el offset fuente quede arriba. */
+  scrollToOffset: (offset: number) => void;
+  /** Offset fuente de la primera línea visible. */
+  getTopOffset: () => number;
 };
 
 type Props = {
@@ -75,6 +81,8 @@ type Props = {
   notes?: TreeNote[];
   activeNoteId?: string;
   vimMode?: boolean;
+  /** Notifica el offset fuente de la primera línea visible al hacer scroll. */
+  onViewportScroll?: (topOffset: number) => void;
   /**
    * Se emite al confirmar "Extraer este encabezado". El workspace crea la nota
    * nueva, quita la sección del contenido actual y la abre.
@@ -82,6 +90,8 @@ type Props = {
   onExtractSection?: (section: { title: string; body: string; anchor: number }) => void;
   onToast?: (message: string) => void;
 };
+
+const externalChangeAnnotation = Annotation.define<boolean>();
 
 type LinkModalState = { url: string; text: string };
 type RenameModalState = { value: string; anchor: number };
@@ -104,7 +114,7 @@ const TEXT_COLORS = [
 ] as const;
 
 export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(function MarkdownEditor(
-  { value, onChange, readOnly = false, onSave, notes, activeNoteId, vimMode = false, onExtractSection, onToast },
+  { value, onChange, readOnly = false, onSave, notes, activeNoteId, vimMode = false, onViewportScroll, onExtractSection, onToast },
   ref,
 ) {
   const host = useRef<HTMLDivElement>(null);
@@ -535,6 +545,28 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(function M
     insertText,
     applyHeading,
     focus: () => viewRef.current?.focus(),
+    applyExternalChange: (nextText: string) => {
+      const view = viewRef.current;
+      if (!view || view.state.doc.toString() === nextText) return;
+      view.dispatch({
+        changes: { from: 0, to: view.state.doc.length, insert: nextText },
+        annotations: externalChangeAnnotation.of(true),
+      });
+    },
+    scrollToOffset: (offset: number) => {
+      const view = viewRef.current;
+      if (!view) return;
+      view.dispatch({ effects: EditorView.scrollIntoView(offset, { y: "start", yMargin: 0 }) });
+    },
+    getTopOffset: () => {
+      const view = viewRef.current;
+      if (!view) return 0;
+      try {
+        return view.lineBlockAtHeight(view.scrollDOM.scrollTop).from;
+      } catch {
+        return 0;
+      }
+    },
   }));
 
   useEffect(() => {
@@ -632,14 +664,33 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(function M
         ]),
         EditorView.editable.of(!readOnly),
         EditorView.updateListener.of((update) => {
-          if (update.docChanged) onChangeRef.current(update.state.doc.toString());
+          if (update.docChanged && !update.transactions.some((tr) => tr.annotation(externalChangeAnnotation) === true)) {
+            onChangeRef.current(update.state.doc.toString());
+          }
         }),
       ],
     });
 
     const view = new EditorView({ state, parent: host.current });
     viewRef.current = view;
+
+    let scrollRaf = 0;
+    const handleScroll = () => {
+      if (!onViewportScroll) return;
+      if (scrollRaf) return;
+      scrollRaf = window.requestAnimationFrame(() => {
+        scrollRaf = 0;
+        try {
+          onViewportScroll(view.lineBlockAtHeight(view.scrollDOM.scrollTop).from);
+        } catch {
+          // vista sin medición disponible aún
+        }
+      });
+    };
+    view.scrollDOM.addEventListener("scroll", handleScroll, { passive: true });
     return () => {
+      if (scrollRaf) window.cancelAnimationFrame(scrollRaf);
+      view.scrollDOM.removeEventListener("scroll", handleScroll);
       view.destroy();
       viewRef.current = null;
     };

@@ -6,38 +6,42 @@ import { Modal } from "@/components/ui/modal";
 
 type PropertyEntry = { key: string; count: number; notes: Array<{ id: string; path: string }> };
 
-export function PropertiesPanel({
-  open,
+function PropertiesPanelInner({
   onClose,
   vaultId,
   onOpenNote,
 }: {
-  open: boolean;
   onClose: () => void;
   vaultId: string;
   onOpenNote: (path: string) => void;
 }) {
-  const [properties, setProperties] = useState<PropertyEntry[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [properties, setProperties] = useState<PropertyEntry[] | null>(null);
   const [openKeys, setOpenKeys] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    if (!open) return;
-    setLoading(true);
+    let cancelled = false;
     fetch(`/api/v1/vaults/${vaultId}/properties`)
       .then(async (r) => {
-        if (!r.ok) return;
+        if (!r.ok) return [];
         const data = (await r.json()) as { properties?: PropertyEntry[] };
-        setProperties(data.properties ?? []);
+        return data.properties ?? [];
       })
-      .finally(() => setLoading(false));
-  }, [open, vaultId]);
+      .then((result) => {
+        if (!cancelled) setProperties(result);
+      })
+      .catch(() => {
+        if (!cancelled) setProperties([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [vaultId]);
 
   return (
-    <Modal open={open} onClose={onClose} title="Propiedades de la bóveda" subtitle="Todas las claves de frontmatter">
+    <Modal open onClose={onClose} title="Propiedades de la bóveda" subtitle="Todas las claves de frontmatter">
       <div className="p-4">
-        {loading ? (
-          <p className="px-3 py-6 text-center text-xs text-[var(--muted)]">Cargando...</p>
+        {properties === null ? (
+          <p className="px-3 py-6 text-center text-xs text-[var(--muted)]">Cargando…</p>
         ) : properties.length === 0 ? (
           <p className="px-3 py-6 text-center text-xs text-[var(--muted)]">Sin propiedades.</p>
         ) : (
@@ -88,4 +92,19 @@ export function PropertiesPanel({
       </div>
     </Modal>
   );
+}
+
+export function PropertiesPanel({
+  open,
+  onClose,
+  vaultId,
+  onOpenNote,
+}: {
+  open: boolean;
+  onClose: () => void;
+  vaultId: string;
+  onOpenNote: (path: string) => void;
+}) {
+  if (!open) return null;
+  return <PropertiesPanelInner onClose={onClose} vaultId={vaultId} onOpenNote={onOpenNote} />;
 }
