@@ -97,9 +97,9 @@ export function Workspace({ vault }: { vault: VaultAccess }) {
   }
 };
 
-const [mode, setMode] = useState<"edit" | "preview" | "split">(() => {
+const [mode, setMode] = useState<"edit" | "preview">(() => {
   const stored = typeof window === "undefined" ? null : loadLayoutPref("granate.mode");
-  return stored === "split" || stored === "edit" || stored === "preview" ? stored : "preview";
+  return stored === "edit" || stored === "preview" ? stored : "preview";
 });
   const [vimMode, setVimMode] = useState(() => (typeof window !== "undefined" && window.localStorage.getItem("granate.vimMode") === "1"));
   const [splitRatio, setSplitRatio] = useState(() => {
@@ -133,7 +133,7 @@ const [mode, setMode] = useState<"edit" | "preview" | "split">(() => {
   }, [mode, splitRatio, syncScroll]);
 
   const handleEditorViewportScroll = useCallback((topOffset: number) => {
-    if (!syncScroll || mode !== "split") return;
+    if (true) return;
     const now = Date.now();
     if (lastSyncRef.current.by === "preview" && now - lastSyncRef.current.at < 150) return;
     lastSyncRef.current = { by: "editor", at: now };
@@ -154,7 +154,7 @@ const [mode, setMode] = useState<"edit" | "preview" | "split">(() => {
   }, [syncScroll, mode]);
 
   const handlePreviewScroll = useCallback(() => {
-    if (!syncScroll || mode !== "split") return;
+    if (true) return;
     const now = Date.now();
     if (lastSyncRef.current.by === "editor" && now - lastSyncRef.current.at < 150) return;
     lastSyncRef.current = { by: "preview", at: now };
@@ -179,13 +179,8 @@ const [mode, setMode] = useState<"edit" | "preview" | "split">(() => {
   }, [syncScroll, mode]);
 
   const handlePreviewChange = useCallback((updated: string) => {
-    if (mode === "split" && editorRef.current) {
-      editorRef.current.applyExternalChange(updated);
-      setContent(updated);
-    } else {
-      setContent(updated);
-    }
-  }, [mode]);
+    setContent(updated);
+  }, []);
 
   const startResizerDrag = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -268,7 +263,7 @@ const [mode, setMode] = useState<"edit" | "preview" | "split">(() => {
     { id: "new-folder", label: "Nueva carpeta", run: () => openNewFolder() },
     { id: "daily", label: "Nota de hoy", run: () => void openDailyNote() },
     { id: "graph", label: "Abrir grafo global", run: () => setGraphOpen(true) },
-    { id: "split", label: "Vista en paralelo (Markdown y editable)", run: () => setMode("split") },
+
     { id: "toggle-sync-scroll", label: syncScroll ? "Desactivar scroll sincronizado" : "Activar scroll sincronizado", run: () => setSyncScroll((value) => !value) },
     { id: "local-graph", label: "Grafo local de la nota activa", run: () => setLocalGraphOpen(true) },
     { id: "chat", label: "Abrir asistente", run: () => setChatOpen(true) },
@@ -1422,7 +1417,6 @@ views:
                   {(
                     [
                       { key: "edit", label: "Editar", icon: PencilLine, title: "Documento Markdown completo" },
-                      { key: "split", label: "Paralelo", icon: Columns2, title: "Markdown y vista editable en paralelo" },
                       { key: "preview", label: "Vista", icon: Eye, title: "Vista previa editable" },
                     ] as const
                   ).map(({ key, label, icon: Icon, title }) => (
@@ -1499,109 +1493,18 @@ views:
                       />
                     </div>
                   </>
-                ) : mode === "split" ? (
-                  <>
-                    {canWrite ? (
-                      <EditorToolbar
-                        editorRef={editorRef}
-                        vaultId={vault.id}
-                        notes={tree.notes}
-                        tags={tree.tags}
-                        activeNoteId={active.id}
-                        onToast={showToast}
-                      />
-                    ) : null}
-                    <div className="flex gap-1 lg:hidden" role="tablist" aria-label="Paneles en paralelo">
-                      <button
-                        type="button"
-                        role="tab"
-                        aria-selected={splitMobileTab === "markdown"}
-                        onClick={() => setSplitMobileTab("markdown")}
-                        className={`btn h-7 flex-1 justify-center text-[11px] ${splitMobileTab === "markdown" ? "bg-[var(--accent-soft)]" : "btn-ghost"}`}
-                      >
-                        Markdown
-                      </button>
-                      <button
-                        type="button"
-                        role="tab"
-                        aria-selected={splitMobileTab === "preview"}
-                        onClick={() => setSplitMobileTab("preview")}
-                        className={`btn h-7 flex-1 justify-center text-[11px] ${splitMobileTab === "preview" ? "bg-[var(--accent-soft)]" : "btn-ghost"}`}
-                      >
-                        Vista editable
-                      </button>
-                    </div>
-                    <div ref={splitContainerRef} className="relative flex min-h-0 flex-1 flex-col lg:flex-row">
-                      <div
-                        className={`${splitMobileTab === "markdown" ? "flex min-h-0 min-w-0" : "hidden lg:flex"} flex-col`}
-                        style={{ flexGrow: splitRatio, flexBasis: "0%" }}
-                      >
-                        <MarkdownEditor
-                          ref={editorRef}
-                          value={content}
-                          onChange={setContent}
-                          readOnly={!canWrite}
-                          onSave={() => void saveNow()}
-                          vimMode={vimMode}
-                          notes={tree.notes}
-                          activeNoteId={active.id}
-                          onViewportScroll={handleEditorViewportScroll}
-                          onExtractSection={(section) => void extractSection(section)}
-                          onToast={showToast}
+                ) : (
+                      <div className="scrollbar h-full overflow-y-auto">
+                        <MarkdownPreview
+                          key={active.id}
+                          content={content}
+                          vaultId={vault.id}
+                          onOpenNote={openByPath}
+                          canEdit={canWrite}
+                          onChange={handlePreviewChange}
+                          onEditConflict={() => showToast("El bloque cambió; vuelve a pulsarlo para editarlo")}
                         />
                       </div>
-                      <div
-                        role="separator"
-                        aria-orientation="vertical"
-                        aria-label="Ajustar ancho de paneles"
-                        tabIndex={0}
-                        onPointerDown={startResizerDrag}
-                        onKeyDown={(event) => {
-                          if (event.key === "ArrowLeft") {
-                            event.preventDefault();
-                            setSplitRatio((ratio) => Math.max(0.2, ratio - 0.05));
-                          } else if (event.key === "ArrowRight") {
-                            event.preventDefault();
-                            setSplitRatio((ratio) => Math.min(0.8, ratio + 0.05));
-                          }
-                        }}
-                        className="hidden w-1 shrink-0 cursor-col-resize bg-transparent transition-colors hover:bg-[var(--border)] focus-visible:bg-[var(--accent)] lg:block"
-                        title="Arrastra o usa las flechas para ajustar el ancho"
-                      />
-                      <div
-                        className={`${splitMobileTab === "preview" ? "flex min-h-0 min-w-0" : "hidden lg:flex"} flex-col`}
-                        style={{ flexGrow: 1 - splitRatio, flexBasis: "0%" }}
-                      >
-                        <div
-                          ref={previewScrollRef}
-                          onScroll={handlePreviewScroll}
-                          className="scrollbar relative min-h-0 flex-1 overflow-y-auto"
-                        >
-                          <MarkdownPreview
-                            key={active.id}
-                            content={content}
-                            vaultId={vault.id}
-                            onOpenNote={openByPath}
-                            canEdit={canWrite}
-                            onChange={handlePreviewChange}
-                            onEditConflict={() => showToast("El bloque cambió; vuelve a pulsarlo para editarlo")}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </>
-                ) : (
-                  <div className="scrollbar h-full overflow-y-auto">
-                    <MarkdownPreview
-                      key={active.id}
-                      content={content}
-                      vaultId={vault.id}
-                      onOpenNote={openByPath}
-                      canEdit={canWrite}
-                      onChange={handlePreviewChange}
-                      onEditConflict={() => showToast("El bloque cambió; vuelve a pulsarlo para editarlo")}
-                    />
-                  </div>
                 )}
               </div>
             </>

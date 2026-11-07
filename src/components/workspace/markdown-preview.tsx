@@ -426,31 +426,57 @@ function BlockSourceEditor({
     onCommit(value);
   };
 
+  const wrap = (before: string, after: string) => {
+    const node = textarea.current;
+    if (!node) return;
+    const start = node.selectionStart;
+    const end = node.selectionEnd;
+    const selected = draft.slice(start, end);
+    const next = draft.slice(0, start) + before + selected + after + draft.slice(end);
+    setDraft(next);
+    requestAnimationFrame(() => {
+      node.focus();
+      node.setSelectionRange(start + before.length, end + before.length);
+    });
+  };
   return (
-    <textarea
-      ref={textarea}
-      autoFocus
-      value={draft}
-      rows={1}
-      aria-label="Editar bloque Markdown"
-      title="Clic fuera o Ctrl/⌘+Enter para aplicar; Escape para cancelar"
-      onChange={(event) => {
-        setDraft(event.currentTarget.value);
-        resize(event.currentTarget);
-      }}
-      onBlur={(event) => commit(event.currentTarget.value)}
-      onKeyDown={(event) => {
-        if (event.key === "Escape") {
-          event.preventDefault();
-          finished.current = true;
-          onCancel();
-        } else if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
-          event.preventDefault();
-          commit(event.currentTarget.value);
-          event.currentTarget.blur();
-        }
-      }}
-      className="w-full resize-y rounded-lg border border-[var(--accent)] bg-[var(--panel-2)] px-3 py-2 font-mono text-sm leading-6 text-[var(--text)] outline-none ring-2 ring-[var(--accent-soft)] focus-visible:ring-[var(--accent)]"
-    />
+    <div className="w-full">
+      <div className="mb-1 flex flex-wrap gap-1">
+        <button type="button" onClick={() => wrap("**", "**")} className="btn h-6 px-2 text-[11px]">B</button>
+        <button type="button" onClick={() => wrap("*", "*")} className="btn h-6 px-2 text-[11px]">I</button>
+        <button type="button" onClick={() => wrap("__", "__")} className="btn h-6 px-2 text-[11px]">U</button>
+        <button type="button" onClick={() => wrap("~~", "~~")} className="btn h-6 px-2 text-[11px]">S</button>
+        <button type="button" onClick={() => wrap("`", "`")} className="btn h-6 px-2 text-[11px]">`</button>
+        <button type="button" onClick={() => wrap("[", "](url)")} className="btn h-6 px-2 text-[11px]">Link</button>
+        <button type="button" onClick={() => wrap("# ", "")} className="btn h-6 px-2 text-[11px]">H1</button>
+        <button type="button" onClick={() => wrap("> ", "")} className="btn h-6 px-2 text-[11px]">Quote</button>
+        <button type="button" onClick={() => wrap("- ", "")} className="btn h-6 px-2 text-[11px]">List</button>
+      </div>
+      <textarea
+        ref={textarea}
+        autoFocus
+        value={draft}
+        rows={1}
+        aria-label="Editar bloque Markdown"
+        title="Clic fuera o Ctrl/⌘+Enter para aplicar; Escape para cancelar"
+        onChange={(event) => {
+          setDraft(event.currentTarget.value);
+          resize(event.currentTarget);
+        }}
+        onBlur={(event) => commit(event.currentTarget.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            event.preventDefault();
+            finished.current = true;
+            onCancel();
+          } else if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+            event.preventDefault();
+            commit(event.currentTarget.value);
+            event.currentTarget.blur();
+          }
+        }}
+        className="w-full resize-y rounded-lg border border-[var(--accent)] bg-[var(--panel-2)] px-3 py-2 font-mono text-sm leading-6 text-[var(--text)] outline-none ring-2 ring-[var(--accent-soft)] focus-visible:ring-[var(--accent)]"
+      />
+    </div>
   );
 }
