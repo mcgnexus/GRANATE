@@ -88,11 +88,13 @@ export function Workspace({ vault }: { vault: VaultAccess }) {
   const [active, setActive] = useState<NoteDetail | null>(null);
   const [content, setContent] = useState("");
   const [mode, setMode] = useState<"edit" | "preview">("preview");
+  const [vimMode, setVimMode] = useState(() => (typeof window !== "undefined" && window.localStorage.getItem("granate.vimMode") === "1"));
   const [view, setView] = useState<"note" | "canvas" | "base">("note");
   const [canvasTarget, setCanvasTarget] = useState<TreeCanvas | null>(null);
   const [baseTarget, setBaseTarget] = useState<TreeBase | null>(null);
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [rightTab, setRightTab] = useState<"details" | "ai" | "files">("details");
+  useEffect(() => { if (typeof window !== "undefined") window.localStorage.setItem("granate.vimMode", vimMode ? "1" : "0"); }, [vimMode]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchSeed, setSearchSeed] = useState("");
@@ -162,6 +164,7 @@ export function Workspace({ vault }: { vault: VaultAccess }) {
     { id: "tasks", label: "Tareas de la bóveda", run: () => setTasksPanelOpen(true) },
     { id: "import", label: "Importar ZIP", run: () => setImportOpen(true) },
     { id: "toggle-edit", label: "Alternar edición/preview", run: () => setMode((m) => (m === "edit" ? "preview" : "edit")) },
+    { id: "toggle-vim", label: "Alternar modo Vim", run: () => setVimMode((v) => !v) },
   ];
 
 
@@ -1335,6 +1338,7 @@ views:
                         onChange={setContent}
                         readOnly={!canWrite}
                         onSave={() => void saveNow()}
+                        vimMode={vimMode}
                         notes={tree.notes}
                         activeNoteId={active.id}
                         onExtractSection={(section) => void extractSection(section)}

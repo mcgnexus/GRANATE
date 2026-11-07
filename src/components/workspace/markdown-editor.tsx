@@ -1,7 +1,8 @@
 "use client";
 
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
-import { EditorView, keymap } from "@codemirror/view";
+import { EditorView, keymap, lineNumbers, highlightActiveLineGutter } from "@codemirror/view";
+import { foldGutter, indentOnInput, bracketMatching as bm } from "@codemirror/language";
 import { EditorState } from "@codemirror/state";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
@@ -9,6 +10,7 @@ import { languages } from "@codemirror/language-data";
 import { syntaxHighlighting, defaultHighlightStyle, bracketMatching } from "@codemirror/language";
 import { searchKeymap, highlightSelectionMatches, search } from "@codemirror/search";
 import { oneDark } from "@codemirror/theme-one-dark";
+import { vim } from "@replit/codemirror-vim";
 import {
   AlignLeft,
   Bold,
@@ -71,6 +73,7 @@ type Props = {
   /** Notas de la bóveda, para el selector de "Añade enlace" del menú contextual. */
   notes?: TreeNote[];
   activeNoteId?: string;
+  vimMode?: boolean;
   /**
    * Se emite al confirmar "Extraer este encabezado". El workspace crea la nota
    * nueva, quita la sección del contenido actual y la abre.
@@ -100,7 +103,7 @@ const TEXT_COLORS = [
 ] as const;
 
 export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(function MarkdownEditor(
-  { value, onChange, readOnly = false, onSave, notes, activeNoteId, onExtractSection, onToast },
+  { value, onChange, readOnly = false, onSave, notes, activeNoteId, vimMode = false, onExtractSection, onToast },
   ref,
 ) {
   const host = useRef<HTMLDivElement>(null);
@@ -541,6 +544,10 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(function M
         markdown({ base: markdownLanguage, codeLanguages: languages }),
         syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
         oneDark,
+        lineNumbers(),
+        highlightActiveLineGutter(),
+        foldGutter(),
+        ...(vimMode ? [vim()] : []),
         EditorView.lineWrapping,
         bracketMatching(),
         history(),
@@ -598,7 +605,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(function M
       viewRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [vimMode]);
 
   useEffect(() => {
     const view = viewRef.current;

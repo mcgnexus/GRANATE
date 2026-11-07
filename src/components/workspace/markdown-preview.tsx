@@ -185,7 +185,23 @@ const PREVIEW_COMPONENTS: Components = {
   h4: editable("h4"),
   h5: editable("h5"),
   h6: editable("h6"),
-  blockquote: editable("blockquote"),
+  blockquote: function CalloutBlockquote({ children, ...props }: React.ComponentProps<"blockquote">) {
+    const first = Array.isArray(children) ? children[0] : children;
+    const text = typeof first === "string" ? first : "";
+    const match = /^\[!(\w+)\](?:\s+(.*))?$/m.exec(text.trim());
+    if (match) {
+      const type = match[1].toLowerCase();
+      const title = match[2]?.trim() || type;
+      const rest = Array.isArray(children) ? children.slice(1) : null;
+      return (
+        <div className={`callout callout-${type}`} data-callout={type}>
+          <div className="callout-title">{title}</div>
+          <div className="callout-content">{rest}</div>
+        </div>
+      );
+    }
+    return editable("blockquote")({ children, ...props } as never);
+  },
   li: editable("li"),
   pre: editable("pre"),
   table: editable("table"),
