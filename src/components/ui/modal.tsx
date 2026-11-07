@@ -1,7 +1,16 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { X } from "lucide-react";
+
+const FOCUSABLE = [
+  "a[href]",
+  "button:not([disabled])",
+  "input:not([disabled])",
+  "select:not([disabled])",
+  "textarea:not([disabled])",
+  "[tabindex]:not([tabindex='-1'])",
+].join(",");
 
 export function Modal({
   open,
@@ -20,13 +29,57 @@ export function Modal({
   wide?: boolean;
   full?: boolean;
 }) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const restoreRef = useRef<HTMLElement | null>(null);
+
   useEffect(() => {
     if (!open) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+    restoreRef.current = document.activeElement as HTMLElement | null;
+
+    const focusFirst = () => {
+      const panel = panelRef.current;
+      if (!panel) return;
+      const targets = panel.querySelectorAll<HTMLElement>(FOCUSABLE);
+      (targets[0] ?? panel).focus();
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    const timer = window.setTimeout(focusFirst, 20);
+
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.stopPropagation();
+        onClose();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const panel = panelRef.current;
+      if (!panel) return;
+      const targets = Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
+        (el) => el.offsetParent !== null || el === document.activeElement,
+      );
+      if (targets.length === 0) {
+        event.preventDefault();
+        return;
+      }
+      const first = targets[0];
+      const last = targets[targets.length - 1];
+      const active = document.activeElement;
+      if (event.shiftKey) {
+        if (active === first || !panel.contains(active)) {
+          event.preventDefault();
+          last.focus();
+        }
+      } else if (active === last || !panel.contains(active)) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    window.addEventListener("keydown", onKey, true);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("keydown", onKey, true);
+      restoreRef.current?.focus?.();
+    };
   }, [open, onClose]);
 
   if (!open) return null;
@@ -36,11 +89,17 @@ export function Modal({
       <button
         type="button"
         aria-label="Cerrar"
+        tabIndex={-1}
         onClick={onClose}
         className="absolute inset-0 bg-black/65 backdrop-blur-sm"
       />
       <div
-        className={`panel relative z-10 flex max-h-[92dvh] w-full flex-col overflow-hidden shadow-2xl ${
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title ? undefined : "Diálogo"}
+        tabIndex={-1}
+        className={`panel relative z-10 flex max-h-[92dvh] w-full flex-col overflow-hidden shadow-2xl outline-none ${
           full
             ? "h-[92dvh] max-w-[1400px] sm:rounded-xl"
             : wide
@@ -54,7 +113,7 @@ export function Modal({
               <h2 className="font-display text-xl">{title}</h2>
               {subtitle ? <p className="mt-1 text-xs text-[var(--muted)]">{subtitle}</p> : null}
             </div>
-            <button type="button" onClick={onClose} className="btn btn-ghost h-8 w-8 p-0">
+            <button type="button" onClick={onClose} className="btn btn-ghost h-8 w-8 p-0" aria-label="Cerrar">
               <X size={16} />
             </button>
           </div>
@@ -63,6 +122,7 @@ export function Modal({
             type="button"
             onClick={onClose}
             className="btn btn-ghost absolute right-3 top-3 z-20 h-8 w-8 p-0"
+            aria-label="Cerrar"
           >
             <X size={16} />
           </button>

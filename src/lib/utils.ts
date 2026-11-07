@@ -55,3 +55,13 @@ export function normalizeVaultPath(input: string): string {
     .replace(/^\/|\/$/g, "")
     .trim();
 }
+
+const ROLE_LABELS: Record<string, string> = {
+  owner: "propietario",
+  editor: "editor",
+  viewer: "lector",
+};
+
+export function roleLabel(role: string): string {
+  return ROLE_LABELS[role] ?? role;
+}

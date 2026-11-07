@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Braces, ChevronDown, ChevronRight } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 
@@ -17,30 +17,37 @@ function PropertiesPanelInner({
 }) {
   const [properties, setProperties] = useState<PropertyEntry[] | null>(null);
   const [openKeys, setOpenKeys] = useState<Set<string>>(new Set());
+  const [error, setError] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
+  const loadProperties = useCallback(() => {
+    setError(false);
+    setProperties(null);
     fetch(`/api/v1/vaults/${vaultId}/properties`)
       .then(async (r) => {
-        if (!r.ok) return [];
+        if (!r.ok) throw new Error("properties");
         const data = (await r.json()) as { properties?: PropertyEntry[] };
         return data.properties ?? [];
       })
-      .then((result) => {
-        if (!cancelled) setProperties(result);
-      })
-      .catch(() => {
-        if (!cancelled) setProperties([]);
-      });
-    return () => {
-      cancelled = true;
-    };
+      .then((result) => setProperties(result))
+      .catch(() => setError(true));
   }, [vaultId]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(loadProperties, 0);
+    return () => window.clearTimeout(timer);
+  }, [loadProperties]);
 
   return (
     <Modal open onClose={onClose} title="Propiedades de la bóveda" subtitle="Todas las claves de frontmatter">
       <div className="p-4">
-        {properties === null ? (
+        {error ? (
+          <div className="px-3 py-6 text-center">
+            <p className="text-xs text-[var(--muted)]">No se pudieron cargar las propiedades.</p>
+            <button type="button" onClick={loadProperties} className="btn btn-ghost mx-auto mt-2 h-7 px-3 text-xs">
+              Reintentar
+            </button>
+          </div>
+        ) : properties === null ? (
           <p className="px-3 py-6 text-center text-xs text-[var(--muted)]">Cargando…</p>
         ) : properties.length === 0 ? (
           <p className="px-3 py-6 text-center text-xs text-[var(--muted)]">Sin propiedades.</p>

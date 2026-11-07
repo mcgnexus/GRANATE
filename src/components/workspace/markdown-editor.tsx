@@ -759,10 +759,10 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(function M
           <button
             type="button"
             aria-label="Cerrar formulario"
-            className="fixed inset-0 z-[62] cursor-default bg-black/20"
+            className="fixed inset-0 z-[60] cursor-default bg-black/20"
             onClick={() => setLinkModal(null)}
           />
-          <div className="panel fixed left-1/2 top-1/2 z-[63] w-80 -translate-x-1/2 -translate-y-1/2 overflow-hidden p-4 shadow-2xl">
+          <div className="panel fixed left-1/2 top-1/2 z-[60] w-80 -translate-x-1/2 -translate-y-1/2 overflow-hidden p-4 shadow-2xl">
             <h3 className="font-display mb-3 text-sm">Enlace web</h3>
             <label className="mb-3 block text-[11px] text-[var(--muted)]">
               URL
@@ -817,10 +817,10 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(function M
           <button
             type="button"
             aria-label="Cerrar formulario"
-            className="fixed inset-0 z-[62] cursor-default bg-black/20"
+            className="fixed inset-0 z-[60] cursor-default bg-black/20"
             onClick={() => setRenameModal(null)}
           />
-          <div className="panel fixed left-1/2 top-1/2 z-[63] w-80 -translate-x-1/2 -translate-y-1/2 overflow-hidden p-4 shadow-2xl">
+          <div className="panel fixed left-1/2 top-1/2 z-[60] w-80 -translate-x-1/2 -translate-y-1/2 overflow-hidden p-4 shadow-2xl">
             <h3 className="font-display mb-3 text-sm">Renombrar encabezado</h3>
             <label className="mb-4 block text-[11px] text-[var(--muted)]">
               Nuevo título
@@ -862,10 +862,10 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(function M
           <button
             type="button"
             aria-label="Cerrar confirmación"
-            className="fixed inset-0 z-[62] cursor-default bg-black/20"
+            className="fixed inset-0 z-[60] cursor-default bg-black/20"
             onClick={() => setExtractModal(null)}
           />
-          <div className="panel fixed left-1/2 top-1/2 z-[63] w-80 -translate-x-1/2 -translate-y-1/2 overflow-hidden p-4 shadow-2xl">
+          <div className="panel fixed left-1/2 top-1/2 z-[60] w-80 -translate-x-1/2 -translate-y-1/2 overflow-hidden p-4 shadow-2xl">
             <h3 className="font-display mb-3 text-sm">Extraer este encabezado</h3>
             <p className="mb-4 text-[11px] leading-relaxed text-[var(--text-soft)]">
               Se creará una nota nueva en la misma carpeta con la sección{" "}

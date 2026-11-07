@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { vaultMembers, vaults } from "@/lib/db/schema";
 import { requireUser } from "@/lib/auth/session";
@@ -41,15 +41,39 @@ export async function createVaultAction(formData: FormData) {
 export async function deleteVaultAction(formData: FormData) {
   const user = await requireUser();
   const vaultId = String(formData.get("vaultId") ?? "");
+  const confirmName = String(formData.get("confirmName") ?? "").trim();
   if (!vaultId) return;
 
-  const owned = await db
-    .select({ id: vaults.id })
+  const [vault] = await db
+    .select({ id: vaults.id, name: vaults.name })
     .from(vaults)
-    .where(and(eq(vaults.id, vaultId), eq(vaults.ownerId, user.id)))
+    .where(
+      and(
+        eq(vaults.id, vaultId),
+        eq(vaults.ownerId, user.id),
+        isNull(vaults.deletedAt),
+      ),
+    )
     .limit(1);
-  if (!owned[0]) return;
+  if (!vault) return;
+  if (confirmName !== vault.name) return;
 
-  await db.delete(vaults).where(eq(vaults.id, vaultId));
+  // Papelera: borrado logico con 30 dias de gracia; el cron purga despues.
+  await db
+    .update(vaults)
+    .set({ deletedAt: new Date() })
+    .where(and(eq(vaults.id, vaultId), isNull(vaults.deletedAt)));
+  revalidatePath("/vaults");
+}
+
+export async function restoreVaultAction(formData: FormData) {
+  const user = await requireUser();
+  const vaultId = String(formData.get("vaultId") ?? "");
+  if (!vaultId) return;
+
+  await db
+    .update(vaults)
+    .set({ deletedAt: null })
+    .where(and(eq(vaults.id, vaultId), eq(vaults.ownerId, user.id)));
   revalidatePath("/vaults");
 }

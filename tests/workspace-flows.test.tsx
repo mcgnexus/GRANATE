@@ -131,6 +131,11 @@ async function openFirstNote() {
   });
 }
 
+/** Acepta el dialogo de confirmacion propio (reemplaza window.confirm). */
+async function acceptDialog(label = "Mover") {
+  await userEvent.click(await screen.findByRole("button", { name: label }));
+}
+
 /** Espera a que el árbol esté estable tras abrir una nota (loadTree re-monta las filas). */
 async function settleTree() {
   await waitFor(() => {
@@ -177,6 +182,7 @@ describe("Workspace: papelera", () => {
 
     await openFirstNote();
     await userEvent.click(screen.getByTitle("Mover a papelera"));
+    await acceptDialog();
 
     expect(await screen.findByText("Sin permisos")).toBeInTheDocument();
     expect(screen.queryByText("Nota movida a la papelera")).not.toBeInTheDocument();
@@ -192,6 +198,7 @@ describe("Workspace: papelera", () => {
 
     await userEvent.click(screen.getAllByLabelText("Acciones de la nota")[0]);
     await userEvent.click(await screen.findByText("Mover a papelera"));
+    await acceptDialog();
 
     expect(await screen.findByText("Sin permisos")).toBeInTheDocument();
     expect(screen.queryByText("Nota movida a la papelera")).not.toBeInTheDocument();
@@ -204,6 +211,7 @@ describe("Workspace: papelera", () => {
 
     await openFirstNote();
     await userEvent.click(screen.getByTitle("Mover a papelera"));
+    await acceptDialog();
 
     expect(await screen.findByText("Nota movida a la papelera")).toBeInTheDocument();
   });

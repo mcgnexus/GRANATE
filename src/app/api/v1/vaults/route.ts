@@ -1,5 +1,5 @@
 import type { NextRequest } from "next/server";
-import { asc, eq, or, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { vaultMembers, vaults } from "@/lib/db/schema";
@@ -22,7 +22,12 @@ export async function GET(request: NextRequest) {
       })
       .from(vaults)
       .leftJoin(vaultMembers, eq(vaultMembers.vaultId, vaults.id))
-      .where(or(eq(vaults.ownerId, auth.user.id), eq(vaultMembers.userId, auth.user.id)))
+      .where(
+        and(
+          isNull(vaults.deletedAt),
+          or(eq(vaults.ownerId, auth.user.id), eq(vaultMembers.userId, auth.user.id)),
+        ),
+      )
       .orderBy(asc(vaults.createdAt));
 
     return Response.json({ vaults: rows });

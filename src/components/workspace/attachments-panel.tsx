@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useDialogs } from "@/components/ui/confirm-dialog";
 import { Copy, ExternalLink, ImageIcon, Loader2, Paperclip, Trash2, Upload } from "lucide-react";
 
 type Attachment = {
@@ -30,6 +31,7 @@ export function AttachmentsPanel({
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const { confirm, dialogNode } = useDialogs();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -70,7 +72,14 @@ export function AttachmentsPanel({
   }
 
   async function remove(item: Attachment) {
-    if (!window.confirm(`¿Eliminar «${item.path}»? Las notas que lo referencien quedarán con el enlace roto.`)) {
+    if (
+      !(await confirm({
+        title: "Eliminar adjunto",
+        message: `Se eliminará «${item.path}». Las notas que lo referencien quedarán con el enlace roto.`,
+        confirmLabel: "Eliminar",
+        danger: true,
+      }))
+    ) {
       return;
     }
     const response = await fetch(
@@ -92,6 +101,7 @@ export function AttachmentsPanel({
 
   return (
     <div className="space-y-3">
+      {dialogNode}
       <div className="flex items-center justify-between">
         <h3 className="text-[10px] uppercase tracking-[0.16em] text-[var(--muted)]">
           Adjuntos · {items.length}

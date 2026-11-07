@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { diffLines } from "diff";
 import { Loader2, RotateCcw } from "lucide-react";
+import { useDialogs } from "@/components/ui/confirm-dialog";
 import { Modal } from "@/components/ui/modal";
 
 type Version = {
@@ -44,6 +45,7 @@ export function VersionHistory({
   const [mode, setMode] = useState<"current" | "previous">("current");
   const [loading, setLoading] = useState(false);
   const [restoring, setRestoring] = useState(false);
+  const { confirm, dialogNode } = useDialogs();
 
   const loadVersions = useCallback(async () => {
     const response = await fetch(`/api/v1/vaults/${vaultId}/notes/${noteId}/versions`);
@@ -102,7 +104,14 @@ export function VersionHistory({
 
   async function restore() {
     if (!selectedId) return;
-    if (!window.confirm("¿Restaurar esta versión? Se guardará una copia de la versión actual antes de cambiarla.")) {
+    if (
+      !(await confirm({
+        title: "Restaurar versión",
+        message:
+          "Se guardará una copia de la versión actual antes de cambiarla.",
+        confirmLabel: "Restaurar",
+      }))
+    ) {
       return;
     }
     setRestoring(true);
@@ -129,6 +138,7 @@ export function VersionHistory({
       subtitle={notePath}
       full
     >
+      {dialogNode}
       <div className="flex h-full min-h-0 flex-col md:flex-row">
         <div className="scrollbar max-h-56 shrink-0 overflow-y-auto border-b border-[var(--border)] md:max-h-none md:w-64 md:border-b-0 md:border-r">
           {versions.length === 0 ? (

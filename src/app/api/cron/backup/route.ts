@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { vaults } from "@/lib/db/schema";
+import { isNull, lt } from "drizzle-orm";
 import { createBackup, pruneBackups } from "@/lib/backups";
 
 export const maxDuration = 300;
@@ -14,7 +15,15 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  const rows = await db.select({ id: vaults.id, name: vaults.name }).from(vaults);
+  // Purga definitiva de bóvedas en papelera hace más de 30 días.
+  await db
+    .delete(vaults)
+    .where(lt(vaults.deletedAt, new Date(Date.now() - 30 * 86_400_000)));
+
+  const rows = await db
+    .select({ id: vaults.id, name: vaults.name })
+    .from(vaults)
+    .where(isNull(vaults.deletedAt));
   const results: Array<{ vaultId: string; ok: boolean; error?: string }> = [];
 
   for (const vault of rows) {

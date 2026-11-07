@@ -14,6 +14,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import { Loader2, Plus, Save } from "lucide-react";
 import { createEmptyCanvas, type CanvasDocument, type CanvasEdge, type CanvasNode } from "@/lib/canvas";
+import { useDialogs } from "@/components/ui/confirm-dialog";
 
 type RfNode = Node<{ label: string; canvasType: string; original: CanvasNode }>;
 
@@ -97,6 +98,7 @@ export function CanvasView({
   const [path, setPath] = useState(canvasPath ?? "");
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState("");
+  const { prompt, dialogNode } = useDialogs();
 
   useEffect(() => {
     let active = true;
@@ -166,7 +168,11 @@ export function CanvasView({
     try {
       if (!path) {
         const suggested = `Canvas ${new Date().toISOString().slice(0, 10)}.canvas`;
-        const chosen = window.prompt("Ruta del canvas", suggested);
+        const chosen = await prompt({
+          title: "Guardar canvas",
+          message: "Elige la ruta del canvas:",
+          initialValue: suggested,
+        });
         if (!chosen) {
           setStatus("");
           return;
@@ -227,6 +233,7 @@ export function CanvasView({
           Doble clic para editar · arrastra para mover
         </span>
       </div>
+      {dialogNode}
       <div className="min-h-0 flex-1">
         <ReactFlow
           nodes={flowNodes}
@@ -260,8 +267,11 @@ export function CanvasView({
             )
           }
           onConnect={onConnect}
-          onNodeDoubleClick={(_, node) => {
-            const next = window.prompt("Texto de la tarjeta", node.data.label as string);
+          onNodeDoubleClick={async (_, node) => {
+            const next = await prompt({
+              title: "Texto de la tarjeta",
+              initialValue: node.data.label as string,
+            });
             if (next) {
               setNodes((current) =>
                 current.map((item) =>

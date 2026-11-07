@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Copy, Download, KeyRound, Loader2, RefreshCw, Tag, Trash2 } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
+import { useDialogs } from "@/components/ui/confirm-dialog";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { PalettePicker } from "@/components/ui/palette-picker";
 import { InstallHelpModal, usePwaInstall } from "@/components/pwa-install";
@@ -36,6 +37,7 @@ export function SettingsModal({
   settings: Record<string, unknown>;
   onChanged: () => void;
 }) {
+  const { confirm, prompt, dialogNode } = useDialogs();
   const [tokens, setTokens] = useState<Token[]>([]);
   const [newToken, setNewToken] = useState("");
   const [tokenName, setTokenName] = useState("CLI");
@@ -168,7 +170,11 @@ export function SettingsModal({
   }
 
   async function renameTag(from: string) {
-    const to = window.prompt(`Nuevo nombre para #${from} (si ya existe, se fusionan)`, from);
+    const to = await prompt({
+      title: `Renombrar #${from}`,
+      message: "Nuevo nombre (si ya existe, se fusionan):",
+      initialValue: from,
+    });
     if (!to || to === from) return;
     const response = await fetch(`/api/v1/vaults/${vaultId}/tags`, {
       method: "POST",
@@ -181,7 +187,15 @@ export function SettingsModal({
   }
 
   async function deleteTag(name: string) {
-    if (!window.confirm(`¿Eliminar #${name} de todas las notas?`)) return;
+    if (
+      !(await confirm({
+        title: `Eliminar #${name}`,
+        message: `Se eliminará #${name} de todas las notas.`,
+        confirmLabel: "Eliminar",
+        danger: true,
+      }))
+    )
+      return;
     const response = await fetch(`/api/v1/vaults/${vaultId}/tags`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -261,6 +275,7 @@ export function SettingsModal({
 
   return (
     <Modal open={open} onClose={onClose} title="Ajustes" subtitle={vaultName} wide>
+      {dialogNode}
       <div className="space-y-7 p-5">
         <section>
           <h3 className="text-sm font-medium">Apariencia</h3>

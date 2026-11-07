@@ -196,10 +196,10 @@ export function EditorToolbar({
           <button
             type="button"
             aria-label="Cerrar selector"
-            className="fixed inset-0 z-40 cursor-default bg-black/10"
+            className="fixed inset-0 z-[60] cursor-default bg-black/10"
             onClick={() => setPanel(null)}
           />
-          <div className="panel fixed right-3 top-[88px] z-50 w-72 overflow-hidden p-2 shadow-2xl">
+          <div className="panel fixed right-3 top-[88px] z-[60] w-72 overflow-hidden p-2 shadow-2xl">
             <div className="relative mb-2">
               <Search size={13} className="absolute left-2.5 top-2.5 text-[var(--muted)]" />
               <input

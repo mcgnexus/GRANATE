@@ -1,13 +1,15 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowRight, Database, FileText, FolderOpen, Plus, Trash2 } from "lucide-react";
+import { ArrowRight, Database, FileText, FolderOpen, Plus } from "lucide-react";
 import { requireUser } from "@/lib/auth/session";
 import { db } from "@/lib/db";
 import { vaults, vaultMembers } from "@/lib/db/schema";
-import { eq, or, sql } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { LogoutButton } from "@/components/vaults/logout-button";
-import { createVaultAction, deleteVaultAction } from "./actions";
+import { roleLabel } from "@/lib/utils";
+import { createVaultAction, restoreVaultAction } from "./actions";
+import { DeleteVaultButton } from "./delete-vault-button";
 
 export const metadata: Metadata = { title: "Mis bóvedas" };
 
@@ -26,8 +28,19 @@ export default async function VaultsPage() {
     })
     .from(vaults)
     .leftJoin(vaultMembers, eq(vaultMembers.vaultId, vaults.id))
-    .where(or(eq(vaults.ownerId, user.id), eq(vaultMembers.userId, user.id)))
+    .where(
+      and(
+        isNull(vaults.deletedAt),
+        or(eq(vaults.ownerId, user.id), eq(vaultMembers.userId, user.id)),
+      ),
+    )
     .orderBy(vaults.createdAt);
+
+  const trash = await db
+    .select({ id: vaults.id, name: vaults.name, deletedAt: vaults.deletedAt })
+    .from(vaults)
+    .where(and(eq(vaults.ownerId, user.id), isNotNull(vaults.deletedAt)))
+    .orderBy(vaults.deletedAt);
 
   return (
     <main className="bg-grain min-h-dvh">
@@ -87,7 +100,7 @@ export default async function VaultsPage() {
                   <div className="min-w-0">
                     <h2 className="truncate font-display text-xl">{vault.name}</h2>
                     <div className="mt-1 flex items-center gap-2 text-[10px] text-[var(--muted)]">
-                      <span className="chip">{vault.role}</span>
+                      <span className="chip">{roleLabel(vault.role)}</span>
                       <span>{vault.noteCount} notas</span>
                       <span>·</span>
                       <span>{new Date(vault.createdAt).toLocaleDateString("es-ES")}</span>
@@ -101,22 +114,40 @@ export default async function VaultsPage() {
                     Abrir <ArrowRight size={13} />
                   </Link>
                   {vault.role === "owner" ? (
-                    <form action={deleteVaultAction}>
-                      <input type="hidden" name="vaultId" value={vault.id} />
-                      <button
-                        type="submit"
-                        className="btn h-8 w-8 p-0 text-[var(--muted)] hover:text-[var(--accent-2)]"
-                        title="Borrar bóveda"
-                      >
-                        <Trash2 size={13} />
-                      </button>
-                    </form>
+                    <DeleteVaultButton vaultId={vault.id} vaultName={vault.name} />
                   ) : null}
                 </div>
               </div>
             ))}
           </div>
         )}
+
+        {trash.length > 0 ? (
+          <div className="mt-8 rounded-xl border border-[var(--border)] bg-[var(--panel)] p-4">
+            <h2 className="font-display text-lg">Papelera</h2>
+            <p className="mt-1 text-xs text-[var(--muted)]">
+              Las bóvedas se eliminan definitivamente 30 días después de borrarlas.
+            </p>
+            <ul className="mt-3 space-y-2">
+              {trash.map((vault) => (
+                <li key={vault.id} className="flex items-center justify-between gap-3 text-sm">
+                  <span className="min-w-0 truncate">
+                    {vault.name}
+                    <span className="ml-2 text-[10px] text-[var(--muted)]">
+                      borrada {vault.deletedAt ? new Date(vault.deletedAt).toLocaleDateString("es-ES") : ""}
+                    </span>
+                  </span>
+                  <form action={restoreVaultAction}>
+                    <input type="hidden" name="vaultId" value={vault.id} />
+                    <button type="submit" className="btn btn-ghost h-7 px-2 text-xs">
+                      Restaurar
+                    </button>
+                  </form>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
 
         <div className="mt-10 flex flex-wrap items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--panel)] p-4 text-xs text-[var(--muted)]">
           <FileText size={15} className="text-[var(--accent-2)]" />

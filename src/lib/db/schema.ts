@@ -137,6 +137,7 @@ export const vaults = pgTable(
     slug: text("slug").notNull(),
     settings: jsonb("settings").$type<Record<string, unknown>>().default({}).notNull(),
     ...timestamps,
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
   (table) => [
     uniqueIndex("vaults_owner_slug_unique").on(table.ownerId, table.slug),

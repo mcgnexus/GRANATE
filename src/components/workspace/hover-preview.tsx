@@ -42,7 +42,7 @@ function PreviewPopover({
   return (
     <span
       role="tooltip"
-      className="pointer-events-none absolute left-0 top-full z-50 mt-1 w-72 rounded-lg border border-[var(--border)] bg-[var(--panel)] p-3 text-[11px] leading-5 text-[var(--text-soft)] shadow-2xl"
+      className="pointer-events-none absolute left-0 top-full z-[60] mt-1 w-72 rounded-lg border border-[var(--border)] bg-[var(--panel)] p-3 text-[11px] leading-5 text-[var(--text-soft)] shadow-2xl"
       onMouseEnter={onKeep}
       onMouseLeave={onDismiss}
     >

@@ -43,7 +43,7 @@ export function ContextBottomSheet({
   const canGoBack = stack.length > 1;
 
   return createPortal(
-    <div className="fixed inset-0 z-[70]" role="dialog" aria-modal="true" aria-label={current.title}>
+    <div className="fixed inset-0 z-[80]" role="dialog" aria-modal="true" aria-label={current.title}>
       <button
         type="button"
         aria-label="Cerrar menú"

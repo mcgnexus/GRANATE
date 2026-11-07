@@ -1,5 +1,5 @@
 import type { NextRequest } from "next/server";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { apiTokens, vaultMembers, vaults } from "@/lib/db/schema";
 import { ApiError } from "@/lib/api-error";
@@ -78,7 +78,7 @@ export async function getVaultAccess(
       vaultMembers,
       and(eq(vaultMembers.vaultId, vaults.id), eq(vaultMembers.userId, userId)),
     )
-    .where(eq(vaults.id, vaultId))
+    .where(and(eq(vaults.id, vaultId), isNull(vaults.deletedAt)))
     .limit(1);
 
   const row = rows[0];
@@ -125,7 +125,12 @@ export async function countVaults(userId: string) {
     .select({ id: vaults.id })
     .from(vaults)
     .leftJoin(vaultMembers, eq(vaultMembers.vaultId, vaults.id))
-    .where(sql`${vaults.ownerId} = ${userId} or ${vaultMembers.userId} = ${userId}`);
+    .where(
+      and(
+        isNull(vaults.deletedAt),
+        sql`${vaults.ownerId} = ${userId} or ${vaultMembers.userId} = ${userId}`,
+      ),
+    );
   return rows.length;
 }
 

@@ -1,8 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import {
   AlertCircle,
+  ArrowLeft,
+  Command,
+  LogOut,
   CalendarDays,
   Check,
   Download,
@@ -50,6 +54,7 @@ import { AttachmentsPanel } from "./attachments-panel";
 import { ShareModal } from "./share-modal";
 import { PreferencesSync } from "@/components/ui/preferences-sync";
 import { Modal } from "@/components/ui/modal";
+import { useDialogs } from "@/components/ui/confirm-dialog";
 import { InstallHelpModal, usePwaInstall } from "@/components/pwa-install";
 import { ACTION_LABELS, type NoteAction } from "@/lib/ai/actions";
 import type { VaultAccess } from "@/lib/auth/api";
@@ -83,9 +88,11 @@ type TreeData = {
 type SaveState = "idle" | "dirty" | "saving" | "saved" | "error";
 
 export function Workspace({ vault }: { vault: VaultAccess }) {
+  const { confirm, prompt, dialogNode } = useDialogs();
   const [tree, setTree] = useState<TreeData>({ notes: [], folders: [], tags: [] });
   const [canvases, setCanvases] = useState<TreeCanvas[]>([]);
   const [bases, setBases] = useState<TreeBase[]>([]);
+  const [treeLoading, setTreeLoading] = useState(true);
   const [active, setActive] = useState<NoteDetail | null>(null);
   const [content, setContent] = useState("");
   const loadLayoutPref = (key: string): string | null => {
@@ -206,6 +213,8 @@ const [mode, setMode] = useState<"edit" | "preview">(() => {
     window.setTimeout(() => setToast(""), 2600);
   }, []);
 
+  const [treeError, setTreeError] = useState(false);
+
   const loadTree = useCallback(async () => {
     const online = await isOnline();
     if (!online) {
@@ -225,6 +234,10 @@ const [mode, setMode] = useState<"edit" | "preview">(() => {
       fetch(`/api/v1/vaults/${vault.id}/canvases`),
       fetch(`/api/v1/vaults/${vault.id}/bases`),
     ]);
+    if (!treeResponse.ok || !canvasResponse.ok || !baseResponse.ok) {
+      setTreeError(true);
+      return;
+    }
     if (treeResponse.ok) {
       const data = (await treeResponse.json()) as TreeData;
       setTree({
@@ -246,7 +259,7 @@ const [mode, setMode] = useState<"edit" | "preview">(() => {
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- carga inicial desde la API
-    void loadTree();
+    void loadTree().finally(() => setTreeLoading(false));
   }, [loadTree]);
 
   useEffect(() => {
@@ -258,6 +271,14 @@ const [mode, setMode] = useState<"edit" | "preview">(() => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
         event.preventDefault();
         void saveNow();
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "o") {
+        event.preventDefault();
+        setQuickSwitcherOpen(true);
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "p") {
+        event.preventDefault();
+        setCommandPaletteOpen(true);
       }
     }
     window.addEventListener("keydown", onKey);
@@ -568,7 +589,15 @@ const [mode, setMode] = useState<"edit" | "preview">(() => {
 
   async function deleteActive() {
     if (!active || !canWrite) return;
-    if (!window.confirm(`¿Mover «${active.title}» a la papelera?`)) return;
+    if (
+      !(await confirm({
+        title: "Mover a la papelera",
+        message: `«${active.title}» irá a la papelera; podrás restaurarla desde el historial de versiones.`,
+        confirmLabel: "Mover",
+        danger: true,
+      }))
+    )
+      return;
     const response = await fetch(`/api/v1/vaults/${vault.id}/notes/${active.id}`, { method: "DELETE" });
     if (!response.ok) {
       const data = (await response.json().catch(() => ({}))) as { error?: string };
@@ -609,7 +638,11 @@ const [mode, setMode] = useState<"edit" | "preview">(() => {
   }
 
   async function createCanvas() {
-    const path = window.prompt("Ruta del nuevo canvas", `Canvas ${new Date().toISOString().slice(0, 10)}.canvas`);
+    const path = await prompt({
+      title: "Nuevo canvas",
+      initialValue: `Canvas ${new Date().toISOString().slice(0, 10)}.canvas`,
+      placeholder: "Ruta del canvas",
+    });
     if (!path) return;
     const finalPath = path.endsWith(".canvas") ? path : `${path}.canvas`;
     const response = await fetch(`/api/v1/vaults/${vault.id}/canvases`, {
@@ -829,7 +862,15 @@ const [mode, setMode] = useState<"edit" | "preview">(() => {
 
   async function removeNote(note: TreeNote) {
     if (!canWrite) return;
-    if (!window.confirm(`¿Mover «${note.title}» a la papelera?`)) return;
+    if (
+      !(await confirm({
+        title: "Mover a la papelera",
+        message: `«${note.title}» irá a la papelera de la bóveda.`,
+        confirmLabel: "Mover",
+        danger: true,
+      }))
+    )
+      return;
     const response = await fetch(`/api/v1/vaults/${vault.id}/notes/${note.id}`, { method: "DELETE" });
     if (!response.ok) {
       const data = (await response.json().catch(() => ({}))) as { error?: string };
@@ -851,7 +892,15 @@ const [mode, setMode] = useState<"edit" | "preview">(() => {
 
   async function removeFolder(path: string) {
     if (!canWrite) return;
-    if (!window.confirm(`¿Eliminar la carpeta «${path}»? Solo funciona si está vacía.`)) return;
+    if (
+      !(await confirm({
+        title: "Eliminar carpeta",
+        message: `Se eliminará «${path}». Solo funciona si está vacía.`,
+        confirmLabel: "Eliminar",
+        danger: true,
+      }))
+    )
+      return;
     const response = await fetch(
       `/api/v1/vaults/${vault.id}/folders?path=${encodeURIComponent(path)}`,
       { method: "DELETE" },
@@ -949,7 +998,15 @@ const [mode, setMode] = useState<"edit" | "preview">(() => {
 
   async function batchDelete() {
     if (!selectedIds.size) return;
-    if (!window.confirm(`¿Mover ${selectedIds.size} notas a la papelera?`)) return;
+    if (
+      !(await confirm({
+        title: "Mover a la papelera",
+        message: `Se moverán ${selectedIds.size} notas a la papelera.`,
+        confirmLabel: "Mover",
+        danger: true,
+      }))
+    )
+      return;
     const ids = Array.from(selectedIds);
     const result = await applyBatch("delete", ids);
     if (result) showToast(`${result.updated} notas movidas a la papelera`);
@@ -967,7 +1024,11 @@ const [mode, setMode] = useState<"edit" | "preview">(() => {
   }
 
   async function createBase() {
-    const path = window.prompt("Ruta de la nueva base", "Proyectos.base");
+    const path = await prompt({
+      title: "Nueva base",
+      initialValue: "Proyectos.base",
+      placeholder: "Ruta de la base",
+    });
     if (!path) return;
     const finalPath = path.endsWith(".base") ? path : `${path}.base`;
     const raw = `filters: ''
@@ -1040,6 +1101,14 @@ views:
         >
           <Menu size={16} />
         </button>
+        <Link
+          href="/vaults"
+          className="btn btn-ghost h-8 gap-1 px-2 text-xs"
+          title="Mis bóvedas"
+          aria-label="Volver a Mis bóvedas"
+        >
+          <ArrowLeft size={15} /> <span className="hidden md:inline">Bóvedas</span>
+        </Link>
         <div className="flex shrink-0 items-center gap-2">
           <span className="grid h-7 w-7 place-items-center rounded-md bg-[var(--accent)] text-[11px] font-bold text-white">
             G
@@ -1073,6 +1142,27 @@ views:
         </button>
 
         <div className="ml-auto flex shrink-0 items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setCommandPaletteOpen(true)}
+            className="btn btn-ghost h-8 gap-1.5 px-2 text-xs"
+            title="Comandos"
+            aria-label="Abrir paleta de comandos"
+          >
+            <Command size={15} /> <span className="hidden md:inline">Comandos</span>
+          </button>
+          <button
+            type="button"
+            onClick={async () => {
+              await fetch("/api/auth/logout", { method: "POST" });
+              window.location.assign("/");
+            }}
+            className="btn btn-ghost h-8 gap-1.5 px-2 text-xs"
+            title="Cerrar sesión"
+            aria-label="Cerrar sesión"
+          >
+            <LogOut size={14} /> <span className="hidden sm:inline">Salir</span>
+          </button>
           <div className="hidden items-center gap-1 sm:flex">
             <button
               type="button"
@@ -1219,7 +1309,23 @@ views:
                 <PanelLeftClose size={15} />
               </button>
             </div>
+            {treeError ? (
+              <div className="mx-3 mt-2 rounded-md border border-[var(--border)] bg-[var(--panel-2)] p-3 text-center">
+                <p className="text-xs text-[var(--muted)]">No se pudo cargar el contenido de la bóveda.</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTreeLoading(true);
+                    void loadTree().finally(() => setTreeLoading(false));
+                  }}
+                  className="btn btn-ghost mt-2 h-7 px-3 text-xs"
+                >
+                  Reintentar
+                </button>
+              </div>
+            ) : null}
             <FileTree
+              loading={treeLoading}
               notes={tree.notes}
               folders={tree.folders}
               canvases={canvases}
@@ -1340,7 +1446,7 @@ views:
                       key={key}
                       type="button"
                       onClick={() => setMode(key)}
-                      className={`btn h-7 gap-1 px-2 text-[11px] ${mode === key ? "bg-[var(--accent-soft)]" : "btn-ghost"}`}
+                      className={`btn h-8 gap-1 px-2 text-[11px] ${mode === key ? "bg-[var(--accent-soft)]" : "btn-ghost"}`}
                       title={title}
                       aria-pressed={mode === key}
                     >
@@ -1360,21 +1466,21 @@ views:
                   >
                     <PanelRightOpen size={13} />
                   </button>
-                  <button type="button" onClick={renameActive} className="btn btn-ghost hidden h-7 w-7 p-0 sm:flex" title="Renombrar">
+                  <button type="button" onClick={renameActive} className="btn btn-ghost hidden h-8 w-8 p-0 sm:flex" title="Renombrar">
                     <PencilLine size={13} />
                   </button>
                   <button
                     type="button"
                     onClick={() => setShareOpen(true)}
-                    className="btn btn-ghost h-7 w-7 p-0"
+                    className="btn btn-ghost h-8 w-8 p-0"
                     title="Compartir nota"
                   >
                     <Share2 size={13} />
                   </button>
-                  <button type="button" onClick={openHistory} className="btn btn-ghost hidden h-7 w-7 p-0 sm:flex" title="Historial">
+                  <button type="button" onClick={openHistory} className="btn btn-ghost hidden h-8 w-8 p-0 sm:flex" title="Historial">
                     <History size={13} />
                   </button>
-                  <button type="button" onClick={deleteActive} className="btn btn-ghost h-7 w-7 p-0 text-[var(--accent-2)]" title="Mover a papelera">
+                  <button type="button" onClick={deleteActive} className="btn btn-ghost h-8 w-8 p-0 text-[var(--accent-2)]" title="Mover a papelera">
                     <Trash2 size={13} />
                   </button>
                 </div>
@@ -2043,8 +2149,9 @@ views:
         }
       />
 
+      {dialogNode}
       {toast ? (
-        <div role="status" aria-live="polite" className="safe-toast fixed left-1/2 z-[60] -translate-x-1/2 rounded-lg border border-[var(--border)] bg-[var(--panel-2)] px-4 py-2 text-xs shadow-xl">
+        <div role="status" aria-live="polite" className="safe-toast fixed left-1/2 z-[70] -translate-x-1/2 rounded-lg border border-[var(--border)] bg-[var(--panel-2)] px-4 py-2 text-xs shadow-xl">
           {toast}
         </div>
       ) : null}

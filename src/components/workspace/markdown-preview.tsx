@@ -479,36 +479,25 @@ function BlockSourceEditor({
       }
     });
 
-  const paste = () => {
+  const paste = async () => {
     const node = textarea.current;
     if (!node) return;
     node.focus();
-    let ok = false;
     try {
-      ok = document.execCommand("paste", false);
-    } catch {
-      ok = false;
-    }
-    if (ok) {
+      const text = await navigator.clipboard?.readText();
+      if (!text) return;
+      const start = node.selectionStart;
+      const end = node.selectionEnd;
+      node.setRangeText(text, start, end, "end");
       setDraft(node.value);
       resize(node);
-      return;
+    } catch {
+      // Portapapeles bloqueado: el usuario puede usar Ctrl+V
     }
-    navigator.clipboard
-      ?.readText()
-      .then((text) => {
-        if (!text) return;
-        const start = node.selectionStart;
-        const end = node.selectionEnd;
-        node.setRangeText(text, start, end, "end");
-        setDraft(node.value);
-        resize(node);
-      })
-      .catch(() => undefined);
   };
 
   const keepFocus = (event: React.MouseEvent) => event.preventDefault();
-  const toolButton = "btn h-6 px-2 text-[11px]";
+  const toolButton = "btn h-7 px-2 text-[11px]";
   const menuItem = "btn h-7 w-full justify-start px-2 text-[11px]";
 
   return (
@@ -565,7 +554,7 @@ function BlockSourceEditor({
           data-block-menu=""
           role="menu"
           aria-label="Menú del bloque"
-          className="fixed z-50 min-w-[160px] rounded-lg border border-[var(--border)] bg-[var(--panel)] p-1 shadow-xl"
+          className="fixed z-[60] min-w-[160px] rounded-lg border border-[var(--border)] bg-[var(--panel)] p-1 shadow-xl"
           style={{
             left: Math.min(menu.x, (typeof window !== "undefined" ? window.innerWidth : menu.x) - 170),
             top: Math.min(menu.y, (typeof window !== "undefined" ? window.innerHeight : menu.y) - 230),

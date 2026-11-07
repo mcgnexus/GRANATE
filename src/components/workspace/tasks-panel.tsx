@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { CheckSquare, Square } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 
@@ -17,25 +17,25 @@ function TasksPanelInner({
 }) {
   const [tasks, setTasks] = useState<Task[] | null>(null);
   const [filter, setFilter] = useState<"all" | "todo" | "done">("todo");
+  const [error, setError] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
+  const loadTasks = useCallback(() => {
+    setError(false);
+    setTasks(null);
     fetch(`/api/v1/vaults/${vaultId}/tasks`)
       .then(async (r) => {
-        if (!r.ok) return [];
+        if (!r.ok) throw new Error("tasks");
         const data = (await r.json()) as { tasks?: Task[] };
         return data.tasks ?? [];
       })
-      .then((result) => {
-        if (!cancelled) setTasks(result);
-      })
-      .catch(() => {
-        if (!cancelled) setTasks([]);
-      });
-    return () => {
-      cancelled = true;
-    };
+      .then((result) => setTasks(result))
+      .catch(() => setError(true));
   }, [vaultId]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(loadTasks, 0);
+    return () => window.clearTimeout(timer);
+  }, [loadTasks]);
 
   const visible = (tasks ?? []).filter((task) =>
     filter === "all" ? true : filter === "todo" ? !task.done : task.done,
@@ -56,7 +56,14 @@ function TasksPanelInner({
             </button>
           ))}
         </div>
-        {tasks === null ? (
+        {error ? (
+          <div className="px-3 py-6 text-center">
+            <p className="text-xs text-[var(--muted)]">No se pudieron cargar las tareas.</p>
+            <button type="button" onClick={loadTasks} className="btn btn-ghost mx-auto mt-2 h-7 px-3 text-xs">
+              Reintentar
+            </button>
+          </div>
+        ) : tasks === null ? (
           <p className="px-3 py-6 text-center text-xs text-[var(--muted)]">Cargando…</p>
         ) : visible.length === 0 ? (
           <p className="px-3 py-6 text-center text-xs text-[var(--muted)]">Sin tareas.</p>

@@ -80,7 +80,7 @@ export function ContextMenu({
     <div
       ref={ref}
       role="menu"
-      className="panel fixed z-[70] max-h-[min(26rem,calc(100vh-16px))] min-w-52 overflow-y-auto p-1 shadow-2xl"
+      className="panel fixed z-[80] max-h-[min(26rem,calc(100vh-16px))] min-w-52 overflow-y-auto p-1 shadow-2xl"
       style={{ left: x, top: y }}
       onContextMenu={(event) => event.preventDefault()}
     >
@@ -248,7 +248,7 @@ function SubmenuPanel({
     <div
       ref={ref}
       role="menu"
-      className="panel fixed z-[71] max-h-[min(20rem,calc(100vh-16px))] min-w-44 overflow-y-auto p-1 shadow-2xl"
+      className="panel fixed z-[81] max-h-[min(20rem,calc(100vh-16px))] min-w-44 overflow-y-auto p-1 shadow-2xl"
       style={style}
       onContextMenu={(event) => event.preventDefault()}
     >

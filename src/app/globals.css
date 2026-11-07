@@ -1,3 +1,12 @@
+/*
+ * Escala de z-index (Tailwind):
+ *   z-10..z-40  layout local (paneles, sidebars, overlays de seccion)
+ *   z-50        modales (components/ui/modal)
+ *   z-[60]      popovers y dialogos que deben flotar sobre un modal
+ *   z-[70]      toast global
+ *   z-[80]/81   menus de contexto y bottom sheets globales
+ */
+
 @import "tailwindcss";
 
 :root {
@@ -72,7 +81,7 @@ html[data-theme="light"][data-palette="onice"] {
   --border-soft: #e2e2e8;
   --text: #1c1c22;
   --text-soft: #44444e;
-  --muted: #70707e;
+  --muted: #5f5f6b;
   --accent: #4652d8;
   --accent-2: #5b6cff;
   --accent-soft: rgba(70, 82, 216, 0.1);
@@ -110,7 +119,7 @@ html[data-theme="light"][data-palette="bosque"] {
   --border-soft: #dbe6d7;
   --text: #1c2a20;
   --text-soft: #415846;
-  --muted: #6d8573;
+  --muted: #5c7161;
   --accent: #2f7a4c;
   --accent-2: #3f8f5f;
   --accent-soft: rgba(47, 122, 76, 0.1);
@@ -148,7 +157,7 @@ html[data-theme="light"][data-palette="oceano"] {
   --border-soft: #d5e4f1;
   --text: #102235;
   --text-soft: #3b556e;
-  --muted: #67819a;
+  --muted: #576d82;
   --accent: #1f6fb8;
   --accent-2: #2f8fe0;
   --accent-soft: rgba(31, 111, 184, 0.1);
@@ -186,7 +195,7 @@ html[data-theme="light"][data-palette="ambar"] {
   --border-soft: #e6d8c2;
   --text: #2e2418;
   --text-soft: #574634;
-  --muted: #857058;
+  --muted: #715f4a;
   --accent: #9a6415;
   --accent-2: #b8791f;
   --accent-soft: rgba(154, 100, 21, 0.1);
@@ -224,7 +233,7 @@ html[data-theme="light"][data-palette="lavanda"] {
   --border-soft: #e6dcf2;
   --text: #241d31;
   --text-soft: #4d4162;
-  --muted: #786a8d;
+  --muted: #665a77;
   --accent: #6746a8;
   --accent-2: #7c5cbf;
   --accent-soft: rgba(103, 70, 168, 0.1);

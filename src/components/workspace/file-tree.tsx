@@ -133,7 +133,8 @@ const SMART_VIEW_META: Array<{
   { key: "untagged", label: "Sin etiquetas", icon: <Tag size={11} /> },
 ];
 
-export function FileTree({
+export function FileTree({ loading,
+  
   notes,
   folders,
   canvases,
@@ -144,6 +145,8 @@ export function FileTree({
   selectedIds,
   actions,
 }: {
+  loading?: boolean;
+  
   notes: TreeNote[];
   folders: string[];
   canvases: TreeCanvas[];
@@ -360,7 +363,7 @@ export function FileTree({
           aria-label="Acciones de la nota"
           title="Acciones"
           onClick={(event) => openNoteMenuFromButton(event, note)}
-          className="grid h-6 w-6 shrink-0 place-items-center rounded text-[var(--muted)] opacity-100 hover:bg-[var(--panel)] hover:text-[var(--text)] sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100"
+          className="grid h-8 w-8 shrink-0 place-items-center rounded text-[var(--muted)] opacity-100 hover:bg-[var(--panel)] hover:text-[var(--text)] sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100"
         >
           <MoreHorizontal size={13} />
         </button>
@@ -423,7 +426,7 @@ export function FileTree({
               aria-label="Acciones de la carpeta"
               title="Acciones"
               onClick={(event) => openFolderMenuFromButton(event, node.path)}
-              className="grid h-6 w-6 shrink-0 place-items-center rounded text-[var(--muted)] opacity-100 hover:bg-[var(--panel)] hover:text-[var(--text)] sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100"
+              className="grid h-8 w-8 shrink-0 place-items-center rounded text-[var(--muted)] opacity-100 hover:bg-[var(--panel)] hover:text-[var(--text)] sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100"
             >
               <MoreHorizontal size={13} />
             </button>
@@ -481,7 +484,7 @@ export function FileTree({
           <button
             type="button"
             onClick={actions.onToggleSelection}
-            className={`btn btn-ghost h-6 w-6 p-0 ${
+            className={`btn btn-ghost h-8 w-8 p-0 ${
               selectionMode ? "bg-[var(--accent-soft)] text-[var(--text)]" : ""
             }`}
             title={selectionMode ? "Salir de selección" : "Seleccionar varias notas"}
@@ -491,7 +494,7 @@ export function FileTree({
           <button
             type="button"
             onClick={() => actions.onNewFolder()}
-            className="btn btn-ghost h-6 w-6 p-0"
+            className="btn btn-ghost h-8 w-8 p-0"
             title="Nueva carpeta"
           >
             <FolderPlus size={14} />
@@ -499,7 +502,7 @@ export function FileTree({
           <button
             type="button"
             onClick={() => actions.onNewNote()}
-            className="btn btn-ghost h-6 w-6 p-0"
+            className="btn btn-ghost h-8 w-8 p-0"
             title="Nueva nota"
           >
             <Plus size={14} />
@@ -563,7 +566,7 @@ export function FileTree({
               <button
                 type="button"
                 onClick={() => setSmartView(null)}
-                className="btn btn-ghost h-6 gap-1 px-1.5 text-[10px]"
+                className="btn btn-ghost h-8 gap-1 px-1.5 text-[10px]"
               >
                 <ChevronRight size={12} className="rotate-180" /> Volver al árbol
               </button>
@@ -582,7 +585,9 @@ export function FileTree({
             {renderNode(tree, 0)}
             {notes.length === 0 && folders.length === 0 ? (
               <p className="px-3 py-4 text-xs leading-5 text-[var(--muted)]">
-                Bóveda vacía. Crea una nota, una carpeta o importa tu ZIP de Obsidian.
+                {loading
+                ? "Cargando la bóveda…"
+                : "Bóveda vacía. Crea una nota, una carpeta o importa tu ZIP de Obsidian."}
               </p>
             ) : null}
           </>
@@ -595,7 +600,7 @@ export function FileTree({
           <button
             type="button"
             onClick={actions.onNewCanvas}
-            className="btn btn-ghost h-6 w-6 p-0"
+            className="btn btn-ghost h-8 w-8 p-0"
             title="Nuevo canvas"
           >
             <Plus size={14} />
@@ -623,7 +628,7 @@ export function FileTree({
           <button
             type="button"
             onClick={actions.onNewBase}
-            className="btn btn-ghost ml-auto h-6 w-6 p-0"
+            className="btn btn-ghost ml-auto h-8 w-8 p-0"
             title="Nueva base"
           >
             <Plus size={14} />
@@ -649,12 +654,12 @@ export function FileTree({
         <div className="shrink-0 border-t border-[var(--border)] bg-[var(--panel)] p-2">
           <div className="flex items-center gap-1 text-[10px] text-[var(--muted)]">
             <span className="flex-1">{selectedIds.size} seleccionadas</span>
-            <button type="button" className="btn btn-ghost h-6 px-1.5 text-[10px]" onClick={actions.onSelectAll}>
+            <button type="button" className="btn btn-ghost h-8 px-1.5 text-[10px]" onClick={actions.onSelectAll}>
               Todo
             </button>
             <button
               type="button"
-              className="btn btn-ghost h-6 w-6 p-0"
+              className="btn btn-ghost h-8 w-8 p-0"
               onClick={actions.onClearSelection}
               title="Salir de selección"
             >

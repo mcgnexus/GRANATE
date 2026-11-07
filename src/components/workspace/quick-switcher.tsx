@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { FileText, Plus } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 
@@ -19,27 +19,27 @@ function QuickSwitcherInner({
 }) {
   const [query, setQuery] = useState("");
   const [notes, setNotes] = useState<Note[] | null>(null);
+  const [error, setError] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    window.setTimeout(() => inputRef.current?.focus(), 20);
-    let cancelled = false;
+  const loadNotes = useCallback(() => {
+    setError(false);
+    setNotes(null);
     fetch(`/api/v1/vaults/${vaultId}/tree`)
       .then(async (r) => {
-        if (!r.ok) return [] as Note[];
+        if (!r.ok) throw new Error("tree");
         const data = (await r.json()) as { notes?: Note[] };
         return data.notes ?? [];
       })
-      .then((result) => {
-        if (!cancelled) setNotes(result);
-      })
-      .catch(() => {
-        if (!cancelled) setNotes([]);
-      });
-    return () => {
-      cancelled = true;
-    };
+      .then((result) => setNotes(result))
+      .catch(() => setError(true));
   }, [vaultId]);
+
+  useEffect(() => {
+    window.setTimeout(() => inputRef.current?.focus(), 20);
+    const timer = window.setTimeout(loadNotes, 0);
+    return () => window.clearTimeout(timer);
+  }, [loadNotes]);
 
   const matches = query.trim()
     ? (notes ?? [])
@@ -91,7 +91,14 @@ function QuickSwitcherInner({
               <span>Crear «{query.trim()}»</span>
             </button>
           ) : null}
-          {notes === null ? (
+          {error ? (
+            <div className="px-3 py-6 text-center">
+              <p className="text-xs text-[var(--muted)]">No se pudieron cargar las notas.</p>
+              <button type="button" onClick={loadNotes} className="btn btn-ghost mx-auto mt-2 h-7 px-3 text-xs">
+                Reintentar
+              </button>
+            </div>
+          ) : notes === null ? (
             <p className="px-3 py-6 text-center text-xs text-[var(--muted)]">Cargando…</p>
           ) : matches.length === 0 ? (
             <p className="px-3 py-6 text-center text-xs text-[var(--muted)]">Sin coincidencias.</p>
