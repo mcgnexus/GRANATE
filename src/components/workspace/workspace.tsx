@@ -31,6 +31,8 @@ import { MarkdownEditor, type MarkdownEditorHandle } from "./markdown-editor";
 import { EditorToolbar } from "./editor-toolbar";
 import { MarkdownPreview } from "./markdown-preview";
 import { SearchDialog } from "./search-dialog";
+import { QuickSwitcher } from "./quick-switcher";
+import { CommandPalette, type CommandEntry } from "./command-palette";
 import { GraphView } from "./graph-view";
 import { ChatPanel } from "./chat-panel";
 import { AgentPanel } from "./agent-panel";
@@ -90,6 +92,8 @@ export function Workspace({ vault }: { vault: VaultAccess }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchSeed, setSearchSeed] = useState("");
+  const [quickSwitcherOpen, setQuickSwitcherOpen] = useState(false);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [graphOpen, setGraphOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
@@ -133,6 +137,21 @@ export function Workspace({ vault }: { vault: VaultAccess }) {
   const [toast, setToast] = useState("");
 
   const pwaInstall = usePwaInstall();
+  const commands: CommandEntry[] = [
+    { id: "search", label: "Buscar en la bóveda", shortcut: "Ctrl+K", run: () => setSearchOpen(true) },
+    { id: "switcher", label: "Cambiar de nota", shortcut: "Ctrl+O", run: () => setQuickSwitcherOpen(true) },
+    { id: "palette", label: "Paleta de comandos", shortcut: "Ctrl+P", run: () => setCommandPaletteOpen(true) },
+    { id: "save", label: "Guardar nota actual", shortcut: "Ctrl+S", run: () => void saveNow() },
+    { id: "new-note", label: "Nueva nota", run: () => openNewNote() },
+    { id: "new-folder", label: "Nueva carpeta", run: () => openNewFolder() },
+    { id: "daily", label: "Nota de hoy", run: () => void openDailyNote() },
+    { id: "graph", label: "Abrir grafo", run: () => setGraphOpen(true) },
+    { id: "chat", label: "Abrir asistente", run: () => setChatOpen(true) },
+    { id: "settings", label: "Ajustes", run: () => setSettingsOpen(true) },
+    { id: "import", label: "Importar ZIP", run: () => setImportOpen(true) },
+    { id: "toggle-edit", label: "Alternar edición/preview", run: () => setMode((m) => (m === "edit" ? "preview" : "edit")) },
+  ];
+
 
   const latest = useRef({ content, activeId: active?.id, activeContent: active?.content });
   latest.current = { content, activeId: active?.id, activeContent: active?.content };
@@ -1614,6 +1633,21 @@ views:
         vaultId={vault.id}
         initialQuery={searchSeed}
         onOpenNote={openByPath}
+      />
+      <QuickSwitcher
+        open={quickSwitcherOpen}
+        onClose={() => setQuickSwitcherOpen(false)}
+        vaultId={vault.id}
+        onOpenNote={openByPath}
+        onCreateNote={(path) => {
+          setNewNotePath(path.endsWith(".md") ? path : `${path}.md`);
+          setNewNoteOpen(true);
+        }}
+      />
+      <CommandPalette
+        open={commandPaletteOpen}
+        onClose={() => setCommandPaletteOpen(false)}
+        commands={commands}
       />
 
       <Modal open={graphOpen} onClose={() => setGraphOpen(false)} title="Grafo de la bóveda" full>

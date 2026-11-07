@@ -7,6 +7,7 @@ import remarkMath from "remark-math";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import rehypeKatex from "rehype-katex";
+import { HoverPreview } from "@/components/workspace/hover-preview";
 import "katex/dist/katex.min.css";
 import {
   identitySourceMap,
@@ -53,6 +54,7 @@ type PreviewContextValue = {
 };
 
 const PreviewContext = createContext<PreviewContextValue | null>(null);
+const VaultIdContext = createContext<string>("");
 
 function editable(tag: string) {
   return function EditableBlock({ node, children, ...props }: EditableBlockProps) {
@@ -136,17 +138,20 @@ function PreviewAnchor({ href, children, className }: React.ComponentProps<"a">)
   const context = useContext(PreviewContext);
   if (href?.startsWith("granate:") && context) {
     const path = decodeURIComponent(href.slice("granate:".length));
+    const vaultId = useContext(VaultIdContext);
     return (
-      <a
-        href="#"
-        className={`wiki-link ${className ?? ""}`}
-        onClick={(event) => {
-          event.preventDefault();
-          context.onOpenNote(path);
-        }}
-      >
-        {children}
-      </a>
+      <HoverPreview vaultId={vaultId} path={path}>
+        <a
+          href="#"
+          className={`wiki-link ${className ?? ""}`}
+          onClick={(event) => {
+            event.preventDefault();
+            context.onOpenNote(path);
+          }}
+        >
+          {children}
+        </a>
+      </HoverPreview>
     );
   }
   return (
@@ -249,7 +254,8 @@ export function MarkdownPreview({
   };
 
   return (
-    <PreviewContext.Provider value={context}>
+    <VaultIdContext.Provider value={vaultId}>
+      <PreviewContext.Provider value={context}>
       <div className="prose-granate px-6 py-8 sm:px-10">
         <ReactMarkdown
           remarkPlugins={[remarkGfm, remarkMath]}
@@ -268,6 +274,7 @@ export function MarkdownPreview({
         </ReactMarkdown>
       </div>
     </PreviewContext.Provider>
+      </VaultIdContext.Provider>
   );
 }
 
