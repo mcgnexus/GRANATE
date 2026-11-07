@@ -31,6 +31,7 @@ import { MarkdownEditor, type MarkdownEditorHandle } from "./markdown-editor";
 import { EditorToolbar } from "./editor-toolbar";
 import { MarkdownPreview } from "./markdown-preview";
 import { SearchDialog } from "./search-dialog";
+import { NoteComposer } from "./note-composer";
 import { TasksPanel } from "./tasks-panel";
 import { PropertiesPanel } from "./properties-panel";
 import { TagsPanel } from "./tags-panel";
@@ -101,6 +102,7 @@ export function Workspace({ vault }: { vault: VaultAccess }) {
   const [tagsPanelOpen, setTagsPanelOpen] = useState(false);
   const [propertiesPanelOpen, setPropertiesPanelOpen] = useState(false);
   const [tasksPanelOpen, setTasksPanelOpen] = useState(false);
+  const [composerOpen, setComposerOpen] = useState(false);
   const [quickSwitcherOpen, setQuickSwitcherOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -162,6 +164,7 @@ export function Workspace({ vault }: { vault: VaultAccess }) {
     { id: "tags", label: "Etiquetas de la bóveda", run: () => setTagsPanelOpen(true) },
     { id: "properties", label: "Propiedades de la bóveda", run: () => setPropertiesPanelOpen(true) },
     { id: "tasks", label: "Tareas de la bóveda", run: () => setTasksPanelOpen(true) },
+    { id: "composer", label: "Componer notas", run: () => setComposerOpen(true) },
     { id: "import", label: "Importar ZIP", run: () => setImportOpen(true) },
     { id: "toggle-edit", label: "Alternar edición/preview", run: () => setMode((m) => (m === "edit" ? "preview" : "edit")) },
     { id: "toggle-vim", label: "Alternar modo Vim", run: () => setVimMode((v) => !v) },
@@ -1710,6 +1713,27 @@ views:
         onClose={() => setTasksPanelOpen(false)}
         vaultId={vault.id}
         onOpenNote={openByPath}
+      />
+      <NoteComposer
+        open={composerOpen}
+        onClose={() => setComposerOpen(false)}
+        vaultId={vault.id}
+        activePath={active?.path ?? ""}
+        activeContent={content}
+        notes={tree.notes}
+        onMerged={() => void loadTree()}
+        onSplit={async (newPath, tail, kept) => {
+          const finalPath = newPath.endsWith(".md") ? newPath : `${newPath}.md`;
+          const create = await fetch(`/api/v1/vaults/${vault.id}/notes`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ path: finalPath, content: `${tail}\n` }),
+          });
+          if (!create.ok) throw new Error("No se pudo crear la nota dividida");
+          const saved = await saveNow(kept);
+          if (!saved) throw new Error("No se pudo guardar la nota original");
+          await loadTree();
+        }}
       />
 
       <Modal open={localGraphOpen} onClose={() => setLocalGraphOpen(false)} title="Grafo local" wide full>

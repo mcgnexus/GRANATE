@@ -557,6 +557,23 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(function M
         autocompletion({
           override: [
             (context: CompletionContext): CompletionResult | null => {
+              const word = context.matchBefore(/\[\[[^\]]*/);
+              if (!word) return null;
+              const typed = word.text.slice(2).toLowerCase();
+              const options = (notes ?? [])
+                .flatMap((note) => {
+                  const aliases = (note as { aliases?: string[] }).aliases ?? [];
+                  const items = [{ label: note.path, detail: note.title ?? note.path }];
+                  for (const alias of aliases) items.push({ label: alias, detail: `${note.path} (alias)` });
+                  return items;
+                })
+                .filter((item) => item.label.toLowerCase().includes(typed) || (item.detail ?? "").toLowerCase().includes(typed))
+                .slice(0, 20)
+                .map((item) => ({ label: item.label, detail: item.detail, apply: item.label }));
+              if (options.length === 0) return null;
+              return { from: word.to, options };
+            },
+            (context: CompletionContext): CompletionResult | null => {
             const word = context.matchBefore(/\/[\w-]*/);
             if (!word || word.from === word.to) return null;
             const options = [
