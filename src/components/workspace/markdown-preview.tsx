@@ -406,6 +406,7 @@ function BlockSourceEditor({
   const textarea = useRef<HTMLTextAreaElement>(null);
   const finished = useRef(false);
   const [draft, setDraft] = useState(value);
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
 
   const resize = (node: HTMLTextAreaElement) => {
     node.style.height = "auto";
@@ -420,37 +421,115 @@ function BlockSourceEditor({
     node.setSelectionRange(node.value.length, node.value.length);
   }, []);
 
+  useEffect(() => {
+    if (!menu) return;
+    const close = () => setMenu(null);
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.stopPropagation();
+        close();
+      }
+    };
+    const onDown = (event: MouseEvent) => {
+      if (!(event.target as HTMLElement).closest("[data-block-menu]")) close();
+    };
+    window.addEventListener("mousedown", onDown, true);
+    window.addEventListener("keydown", onKey, true);
+    window.addEventListener("resize", close);
+    window.addEventListener("scroll", close, true);
+    return () => {
+      window.removeEventListener("mousedown", onDown, true);
+      window.removeEventListener("keydown", onKey, true);
+      window.removeEventListener("resize", close);
+      window.removeEventListener("scroll", close, true);
+    };
+  }, [menu]);
+
   const commit = (value: string) => {
     if (finished.current) return;
     finished.current = true;
     onCommit(value);
   };
 
-  const wrap = (before: string, after: string) => {
+  const withEditor = (action: (node: HTMLTextAreaElement) => void) => {
     const node = textarea.current;
     if (!node) return;
-    const start = node.selectionStart;
-    const end = node.selectionEnd;
-    const selected = draft.slice(start, end);
-    const next = draft.slice(0, start) + before + selected + after + draft.slice(end);
-    setDraft(next);
-    requestAnimationFrame(() => {
-      node.focus();
+    node.focus();
+    action(node);
+    setDraft(node.value);
+    resize(node);
+  };
+
+  const wrap = (before: string, after: string) => {
+    withEditor((node) => {
+      const start = node.selectionStart;
+      const end = node.selectionEnd;
+      const selected = node.value.slice(start, end);
+      node.setRangeText(`${before}${selected}${after}`, start, end, "select");
       node.setSelectionRange(start + before.length, end + before.length);
     });
   };
+
+  const exec = (command: string) =>
+    withEditor(() => {
+      try {
+        document.execCommand(command, false);
+      } catch {
+        return;
+      }
+    });
+
+  const paste = () => {
+    const node = textarea.current;
+    if (!node) return;
+    node.focus();
+    let ok = false;
+    try {
+      ok = document.execCommand("paste", false);
+    } catch {
+      ok = false;
+    }
+    if (ok) {
+      setDraft(node.value);
+      resize(node);
+      return;
+    }
+    navigator.clipboard
+      ?.readText()
+      .then((text) => {
+        if (!text) return;
+        const start = node.selectionStart;
+        const end = node.selectionEnd;
+        node.setRangeText(text, start, end, "end");
+        setDraft(node.value);
+        resize(node);
+      })
+      .catch(() => undefined);
+  };
+
+  const keepFocus = (event: React.MouseEvent) => event.preventDefault();
+  const toolButton = "btn h-6 px-2 text-[11px]";
+  const menuItem = "btn h-7 w-full justify-start px-2 text-[11px]";
+
   return (
     <div className="w-full">
       <div className="mb-1 flex flex-wrap gap-1">
-        <button type="button" onClick={() => wrap("**", "**")} className="btn h-6 px-2 text-[11px]">B</button>
-        <button type="button" onClick={() => wrap("*", "*")} className="btn h-6 px-2 text-[11px]">I</button>
-        <button type="button" onClick={() => wrap("__", "__")} className="btn h-6 px-2 text-[11px]">U</button>
-        <button type="button" onClick={() => wrap("~~", "~~")} className="btn h-6 px-2 text-[11px]">S</button>
-        <button type="button" onClick={() => wrap("`", "`")} className="btn h-6 px-2 text-[11px]">`</button>
-        <button type="button" onClick={() => wrap("[", "](url)")} className="btn h-6 px-2 text-[11px]">Link</button>
-        <button type="button" onClick={() => wrap("# ", "")} className="btn h-6 px-2 text-[11px]">H1</button>
-        <button type="button" onClick={() => wrap("> ", "")} className="btn h-6 px-2 text-[11px]">Quote</button>
-        <button type="button" onClick={() => wrap("- ", "")} className="btn h-6 px-2 text-[11px]">List</button>
+        <button type="button" title="Negrita" onMouseDown={keepFocus} onClick={() => wrap("**", "**")} className={toolButton}>B</button>
+        <button type="button" title="Cursiva" onMouseDown={keepFocus} onClick={() => wrap("*", "*")} className={toolButton}>I</button>
+        <button type="button" title="Subrayado" onMouseDown={keepFocus} onClick={() => wrap("__", "__")} className={toolButton}>U</button>
+        <button type="button" title="Tachado" onMouseDown={keepFocus} onClick={() => wrap("~~", "~~")} className={toolButton}>S</button>
+        <button type="button" title="Código" onMouseDown={keepFocus} onClick={() => wrap("`", "`")} className={toolButton}>`</button>
+        <button type="button" title="Enlace" onMouseDown={keepFocus} onClick={() => wrap("[", "](url)")} className={toolButton}>Link</button>
+        <button type="button" title="Encabezado" onMouseDown={keepFocus} onClick={() => wrap("# ", "")} className={toolButton}>H1</button>
+        <button type="button" title="Cita" onMouseDown={keepFocus} onClick={() => wrap("> ", "")} className={toolButton}>Quote</button>
+        <button type="button" title="Lista" onMouseDown={keepFocus} onClick={() => wrap("- ", "")} className={toolButton}>List</button>
+        <span className="mx-1 w-px self-stretch bg-[var(--border)]" />
+        <button type="button" title="Cortar" onMouseDown={keepFocus} onClick={() => exec("cut")} className={toolButton}>Cortar</button>
+        <button type="button" title="Copiar" onMouseDown={keepFocus} onClick={() => exec("copy")} className={toolButton}>Copiar</button>
+        <button type="button" title="Pegar" onMouseDown={keepFocus} onClick={paste} className={toolButton}>Pegar</button>
+        <button type="button" title="Seleccionar todo" onMouseDown={keepFocus} onClick={() => withEditor((node) => node.select())} className={toolButton}>Todo</button>
+        <button type="button" title="Deshacer" onMouseDown={keepFocus} onClick={() => exec("undo")} className={toolButton}>Deshacer</button>
+        <button type="button" title="Rehacer" onMouseDown={keepFocus} onClick={() => exec("redo")} className={toolButton}>Rehacer</button>
       </div>
       <textarea
         ref={textarea}
@@ -464,6 +543,10 @@ function BlockSourceEditor({
           resize(event.currentTarget);
         }}
         onBlur={(event) => commit(event.currentTarget.value)}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          setMenu({ x: event.clientX, y: event.clientY });
+        }}
         onKeyDown={(event) => {
           if (event.key === "Escape") {
             event.preventDefault();
@@ -477,6 +560,25 @@ function BlockSourceEditor({
         }}
         className="w-full resize-y rounded-lg border border-[var(--accent)] bg-[var(--panel-2)] px-3 py-2 font-mono text-sm leading-6 text-[var(--text)] outline-none ring-2 ring-[var(--accent-soft)] focus-visible:ring-[var(--accent)]"
       />
+      {menu ? (
+        <div
+          data-block-menu=""
+          role="menu"
+          aria-label="Menú del bloque"
+          className="fixed z-50 min-w-[160px] rounded-lg border border-[var(--border)] bg-[var(--panel)] p-1 shadow-xl"
+          style={{
+            left: Math.min(menu.x, (typeof window !== "undefined" ? window.innerWidth : menu.x) - 170),
+            top: Math.min(menu.y, (typeof window !== "undefined" ? window.innerHeight : menu.y) - 230),
+          }}
+        >
+          <button type="button" role="menuitem" onMouseDown={keepFocus} onClick={() => { setMenu(null); exec("cut"); }} className={menuItem}>Cortar</button>
+          <button type="button" role="menuitem" onMouseDown={keepFocus} onClick={() => { setMenu(null); exec("copy"); }} className={menuItem}>Copiar</button>
+          <button type="button" role="menuitem" onMouseDown={keepFocus} onClick={() => { setMenu(null); paste(); }} className={menuItem}>Pegar</button>
+          <button type="button" role="menuitem" onMouseDown={keepFocus} onClick={() => { setMenu(null); withEditor((node) => node.select()); }} className={menuItem}>Seleccionar todo</button>
+          <button type="button" role="menuitem" onMouseDown={keepFocus} onClick={() => { setMenu(null); exec("undo"); }} className={menuItem}>Deshacer</button>
+          <button type="button" role="menuitem" onMouseDown={keepFocus} onClick={() => { setMenu(null); exec("redo"); }} className={menuItem}>Rehacer</button>
+        </div>
+      ) : null}
     </div>
   );
 }

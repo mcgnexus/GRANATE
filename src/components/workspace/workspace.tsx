@@ -23,8 +23,7 @@ import {
   Sparkles,
   Trash2,
   Upload,
-  Eye,
-  Columns2 } from "lucide-react";
+  Eye } from "lucide-react";
 import { FileTree, type TreeBase, type TreeCanvas, type TreeNote, type TreeSmartViews } from "./file-tree";
 import { FolderPicker } from "./folder-picker";
 import { MarkdownEditor, type MarkdownEditorHandle } from "./markdown-editor";
@@ -102,20 +101,6 @@ const [mode, setMode] = useState<"edit" | "preview">(() => {
   return stored === "edit" || stored === "preview" ? stored : "preview";
 });
   const [vimMode, setVimMode] = useState(() => (typeof window !== "undefined" && window.localStorage.getItem("granate.vimMode") === "1"));
-  const [splitRatio, setSplitRatio] = useState(() => {
-  const stored = typeof window === "undefined" ? null : loadLayoutPref("granate.splitRatio");
-  const value = Number.parseFloat(stored ?? "");
-  return Number.isFinite(value) && value >= 0.2 && value <= 0.8 ? value : 0.5;
-});
-  const [splitMobileTab, setSplitMobileTab] = useState<"markdown" | "preview">("markdown");
-  const [syncScroll, setSyncScroll] = useState(() => {
-  const stored = typeof window === "undefined" ? null : loadLayoutPref("granate.syncScroll");
-  return stored === null ? true : stored === "1";
-});
-  const previewScrollRef = useRef<HTMLDivElement>(null);
-  const splitContainerRef = useRef<HTMLDivElement>(null);
-  const lastSyncRef = useRef<{ by: "editor" | "preview"; at: number }>({ by: "editor", at: 0 });
-  const syncRafRef = useRef(0);
   const [view, setView] = useState<"note" | "canvas" | "base">("note");
   const [canvasTarget, setCanvasTarget] = useState<TreeCanvas | null>(null);
   const [baseTarget, setBaseTarget] = useState<TreeBase | null>(null);
@@ -125,81 +110,13 @@ const [mode, setMode] = useState<"edit" | "preview">(() => {
   useEffect(() => {
     try {
       window.localStorage.setItem("granate.mode", mode);
-      window.localStorage.setItem("granate.splitRatio", String(splitRatio));
-      window.localStorage.setItem("granate.syncScroll", syncScroll ? "1" : "0");
     } catch {
       // almacenamiento no disponible
     }
-  }, [mode, splitRatio, syncScroll]);
-
-  const handleEditorViewportScroll = useCallback((topOffset: number) => {
-    if (true) return;
-    const now = Date.now();
-    if (lastSyncRef.current.by === "preview" && now - lastSyncRef.current.at < 150) return;
-    lastSyncRef.current = { by: "editor", at: now };
-    if (syncRafRef.current) return;
-    syncRafRef.current = window.requestAnimationFrame(() => {
-      syncRafRef.current = 0;
-      const container = previewScrollRef.current;
-      if (!container) return;
-      const blocks = container.querySelectorAll<HTMLElement>("[data-src-start]");
-      let target: HTMLElement | null = null;
-      for (const block of blocks) {
-        const start = Number(block.dataset.srcStart);
-        if (Number.isFinite(start) && start <= topOffset + 1) target = block;
-        else break;
-      }
-      if (target) container.scrollTop = target.offsetTop - container.offsetTop - 4;
-    });
-  }, [syncScroll, mode]);
-
-  const handlePreviewScroll = useCallback(() => {
-    if (true) return;
-    const now = Date.now();
-    if (lastSyncRef.current.by === "editor" && now - lastSyncRef.current.at < 150) return;
-    lastSyncRef.current = { by: "preview", at: now };
-    if (syncRafRef.current) return;
-    syncRafRef.current = window.requestAnimationFrame(() => {
-      syncRafRef.current = 0;
-      const container = previewScrollRef.current;
-      if (!container) return;
-      const blocks = container.querySelectorAll<HTMLElement>("[data-src-start]");
-      let visible: HTMLElement | null = null;
-      for (const block of blocks) {
-        if (block.offsetTop + block.offsetHeight > container.scrollTop + 4) {
-          visible = block;
-          break;
-        }
-      }
-      if (visible) {
-        const start = Number(visible.dataset.srcStart);
-        if (Number.isFinite(start)) editorRef.current?.scrollToOffset(start);
-      }
-    });
-  }, [syncScroll, mode]);
+  }, [mode]);
 
   const handlePreviewChange = useCallback((updated: string) => {
     setContent(updated);
-  }, []);
-
-  const startResizerDrag = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    const container = splitContainerRef.current;
-    const target = event.currentTarget;
-    target.setPointerCapture(event.pointerId);
-    const move = (moveEvent: PointerEvent) => {
-      if (!container) return;
-      const bounds = container.getBoundingClientRect();
-      const next = (moveEvent.clientX - bounds.left) / bounds.width;
-      setSplitRatio(Math.min(0.8, Math.max(0.2, next)));
-    };
-    const up = () => {
-      target.releasePointerCapture(event.pointerId);
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-    };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
   }, []);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -264,7 +181,6 @@ const [mode, setMode] = useState<"edit" | "preview">(() => {
     { id: "daily", label: "Nota de hoy", run: () => void openDailyNote() },
     { id: "graph", label: "Abrir grafo global", run: () => setGraphOpen(true) },
 
-    { id: "toggle-sync-scroll", label: syncScroll ? "Desactivar scroll sincronizado" : "Activar scroll sincronizado", run: () => setSyncScroll((value) => !value) },
     { id: "local-graph", label: "Grafo local de la nota activa", run: () => setLocalGraphOpen(true) },
     { id: "chat", label: "Abrir asistente", run: () => setChatOpen(true) },
     { id: "settings", label: "Ajustes", run: () => setSettingsOpen(true) },
@@ -1487,7 +1403,6 @@ views:
                         vimMode={vimMode}
                         notes={tree.notes}
                         activeNoteId={active.id}
-                        onViewportScroll={handleEditorViewportScroll}
                         onExtractSection={(section) => void extractSection(section)}
                         onToast={showToast}
                       />

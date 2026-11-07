@@ -255,7 +255,7 @@ describe("Workspace: mover nota", () => {
 describe("Workspace: extraer sección", () => {
   async function openInEditMode() {
     await openFirstNote();
-    await userEvent.click(screen.getByTitle("Abrir el documento Markdown completo"));
+    await userEvent.click(screen.getByTitle("Documento Markdown completo"));
     await waitFor(() => {
       expect(screen.getByLabelText("test-extract")).toBeInTheDocument();
     });
