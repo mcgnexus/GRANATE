@@ -323,7 +323,7 @@ export function FileTree({
               ? "bg-[var(--accent-soft)] text-[var(--text)]"
               : "text-[var(--text-soft)] hover:bg-[var(--panel-2)]"
         }`}
-        style={{ paddingLeft: `${depth * 12 + 4}px` }}
+        style={{ paddingLeft: `${depth * 12 + 4}px`, contentVisibility: "auto", containIntrinsicSize: "0 28px" }}
       >
         <button
           type="button"
