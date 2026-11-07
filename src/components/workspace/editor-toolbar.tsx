@@ -137,7 +137,7 @@ export function EditorToolbar({
             event.currentTarget.value = "";
             editorRef.current?.applyHeading(level);
           }}
-          className="h-7 appearance-none rounded-md border border-[var(--border)] bg-[var(--panel-2)] pl-2 pr-6 text-[11px] text-[var(--text-soft)] outline-none hover:border-[var(--muted)]"
+          className="h-7 appearance-none rounded-md border border-[var(--border)] bg-[var(--panel-2)] pl-2 pr-6 text-[11px] text-[var(--text-soft)] outline-none hover:border-[var(--muted)] focus-visible:ring-2 focus-visible:ring-[var(--accent-soft)]"
           title="Tipo de encabezado"
         >
           <option value="">Párrafo</option>

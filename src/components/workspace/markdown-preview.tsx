@@ -449,7 +449,7 @@ function BlockSourceEditor({
           event.currentTarget.blur();
         }
       }}
-      className="w-full resize-y rounded-lg border border-[var(--accent)] bg-[var(--panel-2)] px-3 py-2 font-mono text-sm leading-6 text-[var(--text)] outline-none ring-2 ring-[var(--accent-soft)]"
+      className="w-full resize-y rounded-lg border border-[var(--accent)] bg-[var(--panel-2)] px-3 py-2 font-mono text-sm leading-6 text-[var(--text)] outline-none ring-2 ring-[var(--accent-soft)] focus-visible:ring-[var(--accent)]"
     />
   );
 }
