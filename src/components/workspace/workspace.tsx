@@ -31,6 +31,9 @@ import { MarkdownEditor, type MarkdownEditorHandle } from "./markdown-editor";
 import { EditorToolbar } from "./editor-toolbar";
 import { MarkdownPreview } from "./markdown-preview";
 import { SearchDialog } from "./search-dialog";
+import { TasksPanel } from "./tasks-panel";
+import { PropertiesPanel } from "./properties-panel";
+import { TagsPanel } from "./tags-panel";
 import { QuickSwitcher } from "./quick-switcher";
 import { CommandPalette, type CommandEntry } from "./command-palette";
 import { GraphView } from "./graph-view";
@@ -66,6 +69,7 @@ type NoteDetail = {
   outgoing: Array<{ targetPath: string | null; targetId: string | null; rawTarget: string }>;
   tags: string[];
   outline: Array<{ level: number; text: string; line: number }>;
+  unlinkedMentions: Array<{ id: string; path: string; title: string; snippet: string }>;
 };
 
 type TreeData = {
@@ -92,10 +96,14 @@ export function Workspace({ vault }: { vault: VaultAccess }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchSeed, setSearchSeed] = useState("");
+  const [tagsPanelOpen, setTagsPanelOpen] = useState(false);
+  const [propertiesPanelOpen, setPropertiesPanelOpen] = useState(false);
+  const [tasksPanelOpen, setTasksPanelOpen] = useState(false);
   const [quickSwitcherOpen, setQuickSwitcherOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [graphOpen, setGraphOpen] = useState(false);
+  const [localGraphOpen, setLocalGraphOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [assistantTab, setAssistantTab] = useState<"ask" | "agent">("ask");
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -145,9 +153,13 @@ export function Workspace({ vault }: { vault: VaultAccess }) {
     { id: "new-note", label: "Nueva nota", run: () => openNewNote() },
     { id: "new-folder", label: "Nueva carpeta", run: () => openNewFolder() },
     { id: "daily", label: "Nota de hoy", run: () => void openDailyNote() },
-    { id: "graph", label: "Abrir grafo", run: () => setGraphOpen(true) },
+    { id: "graph", label: "Abrir grafo global", run: () => setGraphOpen(true) },
+    { id: "local-graph", label: "Grafo local de la nota activa", run: () => setLocalGraphOpen(true) },
     { id: "chat", label: "Abrir asistente", run: () => setChatOpen(true) },
     { id: "settings", label: "Ajustes", run: () => setSettingsOpen(true) },
+    { id: "tags", label: "Etiquetas de la bóveda", run: () => setTagsPanelOpen(true) },
+    { id: "properties", label: "Propiedades de la bóveda", run: () => setPropertiesPanelOpen(true) },
+    { id: "tasks", label: "Tareas de la bóveda", run: () => setTasksPanelOpen(true) },
     { id: "import", label: "Importar ZIP", run: () => setImportOpen(true) },
     { id: "toggle-edit", label: "Alternar edición/preview", run: () => setMode((m) => (m === "edit" ? "preview" : "edit")) },
   ];
@@ -232,6 +244,7 @@ export function Workspace({ vault }: { vault: VaultAccess }) {
       outgoing: data.note.outgoing ?? [],
       tags: data.note.tags ?? [],
       outline: data.note.outline ?? [],
+      unlinkedMentions: data.note.unlinkedMentions ?? [],
       frontmatter: data.note.frontmatter ?? {},
       content: data.note.content ?? "",
     };
@@ -1586,6 +1599,30 @@ views:
                         ) : null}
                       </div>
                     </section>
+
+                    <section>
+                      <h3 className="mb-2 text-[10px] uppercase tracking-[0.16em] text-[var(--muted)]">
+                        Menciones no enlazadas
+                      </h3>
+                      <div className="space-y-1">
+                        {(active.unlinkedMentions ?? []).map((item) => (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => void openByPath(item.path)}
+                            className="block w-full rounded-md px-2 py-1.5 text-left hover:bg-[var(--panel-2)]"
+                          >
+                            <div className="truncate text-[11px] text-[var(--text-soft)]">{item.title}</div>
+                            {item.snippet ? (
+                              <div className="mt-0.5 line-clamp-2 text-[10px] text-[var(--muted)]">{item.snippet}</div>
+                            ) : null}
+                          </button>
+                        ))}
+                        {(active.unlinkedMentions?.length ?? 0) === 0 ? (
+                          <p className="text-[11px] text-[var(--muted)]">Sin menciones.</p>
+                        ) : null}
+                      </div>
+                    </section>
                   </>
                 ) : rightTab === "files" ? (
                   <AttachmentsPanel vaultId={vault.id} onToast={showToast} />
@@ -1649,6 +1686,35 @@ views:
         onClose={() => setCommandPaletteOpen(false)}
         commands={commands}
       />
+      <TagsPanel
+        open={tagsPanelOpen}
+        onClose={() => setTagsPanelOpen(false)}
+        tags={tree.tags}
+        onPick={(tag) => {
+          setSearchSeed(`#${tag}`);
+          setSearchOpen(true);
+        }}
+      />
+      <PropertiesPanel
+        open={propertiesPanelOpen}
+        onClose={() => setPropertiesPanelOpen(false)}
+        vaultId={vault.id}
+        onOpenNote={openByPath}
+      />
+      <TasksPanel
+        open={tasksPanelOpen}
+        onClose={() => setTasksPanelOpen(false)}
+        vaultId={vault.id}
+        onOpenNote={openByPath}
+      />
+
+      <Modal open={localGraphOpen} onClose={() => setLocalGraphOpen(false)} title="Grafo local" wide full>
+        {active ? (
+          <GraphView vaultId={vault.id} onOpenNote={openByPath} centerId={active.id} local />
+        ) : (
+          <p className="p-6 text-sm text-[var(--muted)]">Abre una nota para ver su grafo local.</p>
+        )}
+      </Modal>
 
       <Modal open={graphOpen} onClose={() => setGraphOpen(false)} title="Grafo de la bóveda" full>
         <div className="h-full">

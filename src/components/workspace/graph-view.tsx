@@ -19,9 +19,13 @@ type GraphLink = SimulationLinkDatum<GraphNode>;
 export function GraphView({
   vaultId,
   onOpenNote,
+  centerId,
+  local = false,
 }: {
   vaultId: string;
   onOpenNote: (path: string) => void;
+  centerId?: string;
+  local?: boolean;
 }) {
   const [nodes, setNodes] = useState<GraphNode[]>([]);
   const [links, setLinks] = useState<GraphLink[]>([]);
@@ -51,8 +55,24 @@ export function GraphView({
           .filter((edge) => graphNodes.some((node) => node.id === edge.source) && graphNodes.some((node) => node.id === edge.target))
           .map((edge) => ({ source: edge.source, target: edge.target }));
 
-        setNodes(graphNodes);
-        setLinks(graphLinks);
+        if (local && centerId) {
+          const neighborIds = new Set<string>([centerId]);
+          for (const edge of data.edges) {
+            if (edge.source === centerId) neighborIds.add(edge.target);
+            if (edge.target === centerId) neighborIds.add(edge.source);
+          }
+          const filteredNodes = graphNodes.filter((node) => neighborIds.has(node.id));
+          const filteredLinks = graphLinks.filter((link) => {
+            const source = typeof link.source === "string" ? link.source : (link.source as GraphNode).id;
+            const target = typeof link.target === "string" ? link.target : (link.target as GraphNode).id;
+            return neighborIds.has(source) && neighborIds.has(target);
+          });
+          setNodes(filteredNodes);
+          setLinks(filteredLinks);
+        } else {
+          setNodes(graphNodes);
+          setLinks(graphLinks);
+        }
         setLoading(false);
 
         const simulation = forceSimulation<GraphNode>(graphNodes)

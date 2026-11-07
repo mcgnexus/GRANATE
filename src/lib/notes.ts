@@ -38,6 +38,7 @@ export type NoteDetail = Note & {
   outgoing: Array<{ targetPath: string | null; targetId: string | null; rawTarget: string }>;
   tags: string[];
   outline: Array<{ level: number; text: string; line: number }>;
+  unlinkedMentions: Array<{ id: string; path: string; title: string; snippet: string }>;
 };
 
 export async function listNotes(vaultId: string, includeDeleted = false): Promise<NoteSummary[]> {
@@ -105,13 +106,54 @@ export async function getNote(vaultId: string, id: string): Promise<NoteDetail |
 
   const { extractOutline } = await import("@/lib/markdown/frontmatter");
 
+  const unlinkedMentions = await listUnlinkedMentions(vaultId, id, note.title);
+
   return {
     ...note,
     backlinks,
     outgoing,
     tags: tagRows.map((row) => row.name),
     outline: extractOutline(parsed.body),
+    unlinkedMentions,
   };
+}
+
+export async function listUnlinkedMentions(
+  vaultId: string,
+  noteId: string,
+  title: string,
+): Promise<Array<{ id: string; path: string; title: string; snippet: string }>> {
+  const needle = title.trim().toLowerCase();
+  if (!needle) return [];
+
+  const linkedIds = new Set(
+    (
+      await db
+        .select({ id: links.sourceNoteId })
+        .from(links)
+        .where(and(eq(links.targetNoteId, noteId)))
+    ).map((row) => row.id),
+  );
+
+  const candidates = await db
+    .select({ id: notes.id, path: notes.path, title: notes.title, content: notes.content })
+    .from(notes)
+    .where(and(eq(notes.vaultId, vaultId), isNull(notes.deletedAt)));
+
+  const result: Array<{ id: string; path: string; title: string; snippet: string }> = [];
+  for (const candidate of candidates) {
+    if (candidate.id === noteId) continue;
+    if (linkedIds.has(candidate.id)) continue;
+    const lower = candidate.content.toLowerCase();
+    const index = lower.indexOf(needle);
+    if (index === -1) continue;
+    const start = Math.max(0, index - 40);
+    const end = Math.min(candidate.content.length, index + needle.length + 40);
+    const snippet = candidate.content.slice(start, end).replace(/\s+/g, " ").trim();
+    result.push({ id: candidate.id, path: candidate.path, title: candidate.title, snippet });
+    if (result.length >= 20) break;
+  }
+  return result;
 }
 
 export async function getNoteByPath(vaultId: string, path: string): Promise<Note | null> {
