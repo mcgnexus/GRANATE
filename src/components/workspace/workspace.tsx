@@ -55,6 +55,7 @@ import { InstallHelpModal, usePwaInstall } from "@/components/pwa-install";
 import { ACTION_LABELS, type NoteAction } from "@/lib/ai/actions";
 import type { VaultAccess } from "@/lib/auth/api";
 import { findHeadingSection, removeSection, suggestNoteName } from "@/lib/markdown/formatting";
+import { cacheNote, getCachedNote, listCachedNotes, isOnline } from "@/lib/offline-cache";
 import { renderTemplate, todayPath, vaultTemplateSettings } from "@/lib/templates";
 
 type NoteDetail = {
@@ -184,6 +185,19 @@ export function Workspace({ vault }: { vault: VaultAccess }) {
   }, []);
 
   const loadTree = useCallback(async () => {
+    const online = await isOnline();
+    if (!online) {
+      const cached = await listCachedNotes(vault.id);
+      if (cached.length) {
+        setTree({
+          notes: cached.map((note) => ({ id: note.id, path: note.path, title: note.title, pinnedAt: null })),
+          folders: Array.from(new Set(cached.map((note) => note.path.split("/").slice(0, -1).join("/")).filter(Boolean))),
+          tags: [],
+          views: undefined,
+        });
+      }
+      return;
+    }
     const [treeResponse, canvasResponse, baseResponse] = await Promise.all([
       fetch(`/api/v1/vaults/${vault.id}/tree`),
       fetch(`/api/v1/vaults/${vault.id}/canvases`),
@@ -238,8 +252,32 @@ export function Workspace({ vault }: { vault: VaultAccess }) {
         return;
       }
     }
-    const response = await fetch(`/api/v1/vaults/${vault.id}/notes/${note.id}`);
-    if (!response.ok) {
+    const response = await fetch(`/api/v1/vaults/${vault.id}/notes/${note.id}`).catch(() => null);
+    if (!response || !response.ok) {
+      const cached = await getCachedNote(vault.id, note.path);
+      if (cached) {
+        const detail: NoteDetail = {
+          id: cached.id,
+          path: cached.path,
+          title: cached.title,
+          content: cached.content,
+          frontmatter: {},
+          wordCount: 0,
+          updatedAt: cached.updatedAt,
+          backlinks: [],
+          outgoing: [],
+          tags: [],
+          outline: [],
+          unlinkedMentions: [],
+        };
+        setActive(detail);
+        setContent(detail.content);
+        setView("note");
+        setMode("preview");
+        setSaveState("idle");
+        showToast("Modo sin conexión: nota desde caché");
+        return;
+      }
       showToast("No se pudo abrir la nota");
       return;
     }
@@ -256,6 +294,7 @@ export function Workspace({ vault }: { vault: VaultAccess }) {
     };
     setActive(detail);
     setContent(detail.content);
+    void cacheNote({ id: detail.id, vaultId: vault.id, path: detail.path, title: detail.title, content: detail.content, updatedAt: detail.updatedAt });
     setView("note");
     setMode("preview");
     setSaveState("idle");
