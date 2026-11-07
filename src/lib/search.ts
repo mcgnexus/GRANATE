@@ -19,25 +19,62 @@ function rowsOf(result: unknown): Record<string, unknown>[] {
   return [];
 }
 
+function parseOperators(query: string) {
+  const textTokens: string[] = [];
+  const ops: { tag?: string; folder?: string; file?: string; prop?: { key: string; value: string }; regex?: RegExp } = {};
+  for (const token of query.split(/\s+/)) {
+    if (!token) continue;
+    const lower = token.toLowerCase();
+    if (lower.startsWith("tag:")) { ops.tag = token.slice(4); continue; }
+    if (lower.startsWith("path:")) { ops.folder = token.slice(5); continue; }
+    if (lower.startsWith("file:")) { ops.file = token.slice(5); continue; }
+    if (lower.startsWith("prop:")) {
+      const rest = token.slice(5);
+      const eq = rest.indexOf("=");
+      if (eq > 0) ops.prop = { key: rest.slice(0, eq), value: rest.slice(eq + 1) };
+      continue;
+    }
+    if (/^\/.+\/$/.test(token)) {
+      try { ops.regex = new RegExp(token.slice(1, -1), "i"); } catch { textTokens.push(token); }
+      continue;
+    }
+    textTokens.push(token);
+  }
+  return { text: textTokens.join(" "), ops };
+}
+
 export async function searchNotes(
   vaultId: string,
   query: string,
   options: { limit?: number; tag?: string; folder?: string; semantic?: boolean } = {},
 ): Promise<SearchHit[]> {
-  const trimmed = query.trim();
-  if (!trimmed) return [];
+  const { text, ops } = parseOperators(query);
+  const trimmed = text.trim() || query.trim();
+  if (!trimmed && !ops.file && !ops.prop && !ops.regex) return [];
   const limit = options.limit ?? 20;
 
+  const tag = options.tag ?? ops.tag;
+  const folder = options.folder ?? ops.folder;
+
   const filters: ReturnType<typeof sql>[] = [];
-  if (options.tag) {
+  if (tag) {
     filters.push(sql`exists (
       select 1 from note_tags nt
       join tags t on t.id = nt.tag_id
-      where nt.note_id = n.id and lower(t.name) = ${options.tag.replace(/^#/, "").toLowerCase()}
+      where nt.note_id = n.id and lower(t.name) = ${tag.replace(/^#/, "").toLowerCase()}
     )`);
   }
-  if (options.folder) {
-    filters.push(sql`lower(n.path) like ${`${options.folder.toLowerCase()}/%`}`);
+  if (folder) {
+    filters.push(sql`lower(n.path) like ${`${folder.toLowerCase()}/%`}`);
+  }
+  if (ops.file) {
+    filters.push(sql`lower(n.path) like ${`%${ops.file.toLowerCase()}%`}`);
+  }
+  if (ops.prop) {
+    filters.push(sql`n.frontmatter ->> ${ops.prop.key} = ${ops.prop.value}`);
+  }
+  if (ops.regex) {
+    filters.push(sql`(n.title ~* ${ops.regex.source} or n.content ~* ${ops.regex.source})`);
   }
 
   const fulltext = rowsOf(

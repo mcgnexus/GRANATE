@@ -9,6 +9,7 @@ import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { languages } from "@codemirror/language-data";
 import { syntaxHighlighting, defaultHighlightStyle, bracketMatching } from "@codemirror/language";
 import { searchKeymap, highlightSelectionMatches, search } from "@codemirror/search";
+import { autocompletion, type CompletionContext, type CompletionResult } from "@codemirror/autocomplete";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { vim } from "@replit/codemirror-vim";
 import {
@@ -553,6 +554,27 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(function M
         history(),
         search({ top: true }),
         highlightSelectionMatches(),
+        autocompletion({
+          override: [
+            (context: CompletionContext): CompletionResult | null => {
+            const word = context.matchBefore(/\/[\w-]*/);
+            if (!word || word.from === word.to) return null;
+            const options = [
+              { label: "/h1", detail: "Encabezado 1", apply: "# " },
+              { label: "/h2", detail: "Encabezado 2", apply: "## " },
+              { label: "/h3", detail: "Encabezado 3", apply: "### " },
+              { label: "/bullet", detail: "Lista con viñetas", apply: "- " },
+              { label: "/numbered", detail: "Lista numerada", apply: "1. " },
+              { label: "/quote", detail: "Cita", apply: "> " },
+              { label: "/code", detail: "Bloque de código", apply: "```\n\n```" },
+              { label: "/callout", detail: "Callout", apply: "> [!note] Título\n> " },
+              { label: "/hr", detail: "Línea horizontal", apply: "---\n" },
+              { label: "/task", detail: "Tarea", apply: "- [ ] " },
+            ].filter((o) => o.label.startsWith(word.text));
+            return { from: word.from, options };
+          },
+          ],
+        }),
         keymap.of([
           ...defaultKeymap,
           ...historyKeymap,

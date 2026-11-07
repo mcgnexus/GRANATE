@@ -24,7 +24,7 @@ const IMAGE_RE = /\.(png|jpg|jpeg|gif|webp|svg|avif|bmp)$/i;
  */
 const schema = {
   ...defaultSchema,
-  tagNames: Array.from(new Set([...(defaultSchema.tagNames ?? []), "u", "mark", "span"])),
+  tagNames: Array.from(new Set([...(defaultSchema.tagNames ?? []), "u", "mark", "span", "transclusion"])),
   attributes: {
     ...defaultSchema.attributes,
     // El schema base solo permite clases language-* en <code>; sin esto,
@@ -174,7 +174,7 @@ function PreviewInput({ type, checked }: React.ComponentProps<"input">) {
   ) : null;
 }
 
-const PREVIEW_COMPONENTS: Components = {
+const PREVIEW_COMPONENTS = {
   a: PreviewAnchor,
   img: PreviewImage,
   input: PreviewInput,
@@ -204,8 +204,98 @@ const PREVIEW_COMPONENTS: Components = {
   },
   li: editable("li"),
   pre: editable("pre"),
+  code: function MermaidCode({ className, children }: React.ComponentProps<"code">) {
+    const isMermaid = className?.includes("language-mermaid");
+    if (isMermaid) {
+      const code = Array.isArray(children) ? children.join("") : String(children ?? "");
+      return <MermaidDiagram code={code} />;
+    }
+    return <code className={className}>{children}</code>;
+  },
   table: editable("table"),
+  transclusion: function TransclusionComp({ vault, note, fragment, block }: { vault: string; note: string; fragment: string; block: string }) {
+    return <TransclusionView vaultId={vault} notePath={decodeURIComponent(note)} fragment={decodeURIComponent(fragment)} isBlock={block === "true"} />;
+  },
 };
+
+
+function MermaidDiagram({ code }: { code: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [svg, setSvg] = useState("");
+  const [error, setError] = useState("");
+  useEffect(() => {
+    let cancelled = false;
+    import("mermaid").then(async (mod) => {
+      const mermaid = mod.default;
+      mermaid.initialize({ startOnLoad: false, theme: "dark" });
+      try {
+        const id = `mmd-${Math.random().toString(36).slice(2)}`;
+        const result = await mermaid.render(id, code);
+        if (!cancelled) setSvg(result.svg);
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : "Error Mermaid");
+      }
+    });
+    return () => { cancelled = true; };
+  }, [code]);
+  if (error) return <pre className="text-[11px] text-red-400">{error}</pre>;
+  return <div className="my-3 overflow-x-auto" dangerouslySetInnerHTML={{ __html: svg }} />;
+}
+
+
+function TransclusionView({ vaultId, notePath, fragment, isBlock }: { vaultId: string; notePath: string; fragment: string; isBlock: boolean }) {
+  const [html, setHtml] = useState<string>("");
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await fetch(`/api/v1/vaults/${vaultId}/notes?path=${encodeURIComponent(notePath.endsWith(".md") ? notePath : `${notePath}.md`)}`);
+        if (!response.ok) { if (!cancelled) { setHtml("Nota no encontrada."); setLoading(false); } return; }
+        const data = (await response.json()) as { note?: { content?: string } };
+        const content = data.note?.content ?? "";
+        // extract section by heading or block id
+        let extracted = "";
+        if (isBlock && fragment) {
+          const re = new RegExp(`\\^${fragment}\\b`, "m");
+          // find paragraph containing the block id
+          const lines = content.split("\n");
+          for (let i = 0; i < lines.length; i++) {
+            if (re.test(lines[i])) { extracted = lines[i].replace(/\^\w+/, "").trim(); break; }
+          }
+        } else if (fragment) {
+          const found = content.split("\n").reduce<{ start: number; end: number } | null>((acc, _line, idx, arr) => {
+            if (acc) return acc;
+            const headingRe = new RegExp(`^#{1,6}\\s+${fragment.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*$`, "i");
+            if (headingRe.test(arr[idx])) {
+              let end = arr.length;
+              for (let j = idx + 1; j < arr.length; j++) {
+                if (/^#{1,6}\s/.test(arr[j])) { end = j; break; }
+              }
+              return { start: idx, end };
+            }
+            return null;
+          }, null);
+          if (found) extracted = content.split("\n").slice(found.start + 1, found.end).join("\n").trim();
+        } else {
+          extracted = content.trim();
+        }
+        if (!cancelled) { setHtml(extracted || "Sin contenido."); setLoading(false); }
+      } catch {
+        if (!cancelled) { setHtml("Error al cargar."); setLoading(false); }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [vaultId, notePath, fragment, isBlock]);
+  return (
+    <div className="my-3 rounded-lg border border-[var(--border)] bg-[var(--panel-2)] p-3 text-[12px]">
+      <div className="mb-1 text-[10px] uppercase tracking-[0.16em] text-[var(--muted)]">
+        {isBlock ? "Bloque" : "Sección"} de {decodeURIComponent(notePath)}
+      </div>
+      {loading ? <span className="text-[var(--muted)]">Cargando…</span> : <div className="whitespace-pre-wrap">{html}</div>}
+    </div>
+  );
+}
 
 export function MarkdownPreview({
   content,
@@ -253,6 +343,12 @@ export function MarkdownPreview({
           `/api/v1/vaults/${vaultId}/attachments?path=${encodeURIComponent(target)}`;
         return `![${alias}](${src})`;
       }
+      if (embed && (target.includes("#") || target.includes("^"))) {
+        const [notePath, fragment] = target.split("#");
+        const heading = fragment?.replace(/^\^/, "") ?? "";
+        const isBlock = fragment?.startsWith("^") ?? false;
+        return `<transclusion vault="${vaultId}" note="${encodeURIComponent(notePath)}" fragment="${encodeURIComponent(heading)}" block="${isBlock}" />`;
+      }
       return `[${alias}](granate:${encodeURIComponent(target)})`;
     },
   );
@@ -277,7 +373,7 @@ export function MarkdownPreview({
           remarkPlugins={[remarkGfm, remarkMath]}
           // Sanitiza primero el HTML del usuario; KaTeX después añade su markup de confianza.
           rehypePlugins={[rehypeRaw, [rehypeSanitize, schema], rehypeKatex]}
-          components={PREVIEW_COMPONENTS}
+          components={PREVIEW_COMPONENTS as Components}
           urlTransform={(url) => {
             if (url.startsWith("granate:")) return url;
             if (/^(https?:|mailto:)/i.test(url)) return url;
