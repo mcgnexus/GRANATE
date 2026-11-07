@@ -1985,7 +1985,7 @@ views:
       />
 
       {toast ? (
-        <div className="safe-toast fixed left-1/2 z-[60] -translate-x-1/2 rounded-lg border border-[var(--border)] bg-[var(--panel-2)] px-4 py-2 text-xs shadow-xl">
+        <div role="status" aria-live="polite" className="safe-toast fixed left-1/2 z-[60] -translate-x-1/2 rounded-lg border border-[var(--border)] bg-[var(--panel-2)] px-4 py-2 text-xs shadow-xl">
           {toast}
         </div>
       ) : null}

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useRef, useState } from "react";
+import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown, { type Components, type ExtraProps } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -315,43 +315,46 @@ export function MarkdownPreview({
   onEditConflict?: () => void;
 }) {
   const [activeBlock, setActiveBlock] = useState<PreviewBlock | null>(null);
-  const bodyMatch = /^---[\s\S]*?---\s*/.exec(content);
-  const bodyOffset = bodyMatch?.[0].length ?? 0;
-  const body = content.slice(bodyOffset);
-  let mappedMarkdown = {
-    text: body,
-    sourceMap: identitySourceMap(body.length, bodyOffset),
-  };
-  mappedMarkdown = transformWithSourceMap(
-    mappedMarkdown.text,
-    mappedMarkdown.sourceMap,
-    /%%([\s\S]+?)%%/g,
-    (match) => `<!-- ${match[1].replace(/--+/g, "·")} -->`,
-  );
-  mappedMarkdown = transformWithSourceMap(
-    mappedMarkdown.text,
-    mappedMarkdown.sourceMap,
-    /(!)?\[\[([^\]]+?)\]\]/g,
-    (match) => {
-      const embed = match[1];
-      const inner = match[2];
-      const target = inner.split("|")[0].split("#")[0].trim();
-      const alias = inner.includes("|") ? inner.split("|").slice(1).join("|") : target;
-      if (embed && IMAGE_RE.test(target)) {
-        const src =
-          attachmentUrl?.(target) ??
-          `/api/v1/vaults/${vaultId}/attachments?path=${encodeURIComponent(target)}`;
-        return `![${alias}](${src})`;
-      }
-      if (embed && (target.includes("#") || target.includes("^"))) {
-        const [notePath, fragment] = target.split("#");
-        const heading = fragment?.replace(/^\^/, "") ?? "";
-        const isBlock = fragment?.startsWith("^") ?? false;
-        return `<transclusion vault="${vaultId}" note="${encodeURIComponent(notePath)}" fragment="${encodeURIComponent(heading)}" block="${isBlock}" />`;
-      }
-      return `[${alias}](granate:${encodeURIComponent(target)})`;
-    },
-  );
+  const mappedMarkdown = useMemo(() => {
+    const bodyMatch = /^---[\s\S]*?---\s*/.exec(content);
+    const bodyOffset = bodyMatch?.[0].length ?? 0;
+    const body = content.slice(bodyOffset);
+    let result = {
+      text: body,
+      sourceMap: identitySourceMap(body.length, bodyOffset),
+    };
+    result = transformWithSourceMap(
+      result.text,
+      result.sourceMap,
+      /%%([\s\S]+?)%%/g,
+      (match) => `<!-- ${match[1].replace(/--+/g, "·")} -->`,
+    );
+    result = transformWithSourceMap(
+      result.text,
+      result.sourceMap,
+      /(!)?\[\[([^\]]+?)\]\]/g,
+      (match) => {
+        const embed = match[1];
+        const inner = match[2];
+        const target = inner.split("|")[0].split("#")[0].trim();
+        const alias = inner.includes("|") ? inner.split("|").slice(1).join("|") : target;
+        if (embed && IMAGE_RE.test(target)) {
+          const src =
+            attachmentUrl?.(target) ??
+            `/api/v1/vaults/${vaultId}/attachments?path=${encodeURIComponent(target)}`;
+          return `![${alias}](${src})`;
+        }
+        if (embed && (target.includes("#") || target.includes("^"))) {
+          const [notePath, fragment] = target.split("#");
+          const heading = fragment?.replace(/^\^/, "") ?? "";
+          const isBlock = fragment?.startsWith("^") ?? false;
+          return `<transclusion vault="${vaultId}" note="${encodeURIComponent(notePath)}" fragment="${encodeURIComponent(heading)}" block="${isBlock}" />`;
+        }
+        return `[${alias}](granate:${encodeURIComponent(target)})`;
+      },
+    );
+    return result;
+  }, [content, vaultId, attachmentUrl]);
   const markdown = mappedMarkdown.text;
 
   const context: PreviewContextValue = {
